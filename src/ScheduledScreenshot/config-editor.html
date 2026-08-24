@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>Scheduled Screenshot configuration</title>
+  <style>
+    :root {
+      --paper: #f4f6f8;
+      --surface: #ffffff;
+      --ink: #20262e;
+      --muted: #647180;
+      --line: #d8dee5;
+      --blue: #1769aa;
+      --amber: #c66a15;
+      --green: #287d4f;
+      --red: #b42318;
+      --shadow: 0 12px 34px rgba(31, 42, 55, .08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font: 15px/1.45 "Segoe UI", system-ui, sans-serif;
+    }
+    button, input, select, textarea { font: inherit; }
+    button, input, select, textarea { border-radius: 4px; }
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+      outline: 3px solid rgba(23, 105, 170, .3);
+      outline-offset: 2px;
+    }
+    .shell { max-width: 1320px; margin: 0 auto; padding: 28px; }
+    .masthead { display: flex; gap: 24px; align-items: end; justify-content: space-between; margin-bottom: 18px; }
+    .eyebrow { color: var(--blue); font: 700 12px/1 Consolas, monospace; letter-spacing: .13em; text-transform: uppercase; }
+    h1 { margin: 8px 0 2px; font: 600 34px/1.05 Bahnschrift, "Arial Narrow", sans-serif; letter-spacing: -.02em; }
+    .subtitle { margin: 0; color: var(--muted); }
+    .actions { display: flex; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+    button {
+      min-height: 38px;
+      padding: 8px 14px;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { border-color: #aab5c0; }
+    button.primary { color: #fff; background: var(--blue); border-color: var(--blue); }
+    button.danger { color: var(--red); }
+    button.icon { min-height: 30px; padding: 4px 8px; font: 700 13px Consolas, monospace; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .frame-strip {
+      display: grid;
+      grid-template-columns: 1.5fr repeat(3, 1fr);
+      background: var(--ink);
+      color: #fff;
+      border: 5px solid var(--ink);
+      box-shadow: var(--shadow);
+      margin-bottom: 20px;
+    }
+    .frame-cell { min-height: 76px; padding: 13px 16px; border-right: 1px dashed rgba(255,255,255,.28); }
+    .frame-cell:last-child { border-right: 0; }
+    .frame-label { color: #aeb9c5; font: 11px/1.2 Consolas, monospace; text-transform: uppercase; letter-spacing: .1em; }
+    .frame-value { margin-top: 8px; font: 600 21px/1.1 Bahnschrift, sans-serif; overflow-wrap: anywhere; }
+    .layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .sidebar, .panel { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+    .sidebar { position: sticky; top: 16px; }
+    .sidebar-head { padding: 14px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
+    .sidebar-head button { flex: 1; }
+    .nav-item {
+      width: 100%; display: grid; grid-template-columns: 11px 1fr auto; gap: 10px; align-items: center;
+      min-height: 48px; padding: 9px 13px; border: 0; border-bottom: 1px solid #edf0f3; border-radius: 0;
+      text-align: left; font-weight: 600;
+    }
+    .nav-item.active { background: #eaf3fa; box-shadow: inset 3px 0 var(--blue); }
+    .status-dot { width: 9px; height: 9px; border-radius: 50%; background: #aab3bd; }
+    .status-dot.on { background: var(--green); }
+    .nav-meta { color: var(--muted); font: 11px Consolas, monospace; }
+    .panel { padding: 24px; min-height: 500px; }
+    .panel-head { display: flex; justify-content: space-between; gap: 18px; align-items: start; margin-bottom: 24px; }
+    h2 { margin: 0; font: 600 27px/1.1 Bahnschrift, sans-serif; }
+    h3 { margin: 0 0 15px; font: 600 18px Bahnschrift, sans-serif; }
+    .panel-note { color: var(--muted); margin: 5px 0 0; }
+    .section { padding: 20px 0; border-top: 1px solid var(--line); }
+    .section:first-of-type { border-top: 0; padding-top: 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; }
+    .grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .field { min-width: 0; }
+    .field.wide { grid-column: 1 / -1; }
+    label, .label { display: block; margin-bottom: 6px; font-weight: 650; }
+    .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
+    input[type="text"], input[type="number"], input[type="datetime-local"], select, textarea {
+      width: 100%; min-height: 40px; padding: 8px 10px; color: var(--ink); background: #fff; border: 1px solid #bfc8d2;
+    }
+    textarea { min-height: 86px; resize: vertical; font-family: Consolas, monospace; }
+    input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--blue); }
+    .check-row { display: flex; align-items: center; gap: 9px; min-height: 40px; }
+    .days { display: flex; gap: 6px; flex-wrap: wrap; }
+    .day { position: relative; }
+    .day input { position: absolute; opacity: 0; }
+    .day span { display: grid; place-items: center; width: 42px; height: 36px; border: 1px solid var(--line); border-radius: 4px; font: 12px Consolas, monospace; cursor: pointer; }
+    .day input:checked + span { color: #fff; background: var(--blue); border-color: var(--blue); }
+    .day input:focus-visible + span { outline: 3px solid rgba(23,105,170,.3); outline-offset: 2px; }
+    .unit-input { display: grid; grid-template-columns: 1fr 120px; gap: 8px; }
+    .token-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .token-row button { min-height: 29px; padding: 3px 8px; font: 12px Consolas, monospace; }
+    .preview { margin-top: 9px; padding: 9px 11px; color: #27384a; background: #edf3f7; border-left: 3px solid var(--blue); font: 13px Consolas, monospace; overflow-wrap: anywhere; }
+    .warning { margin: 15px 0; padding: 12px 14px; color: #6d3706; background: #fff3e5; border: 1px solid #efc18e; }
+    .errors { margin-bottom: 18px; padding: 12px 15px; color: #7a1b14; background: #fff0ee; border: 1px solid #e7aaa5; }
+    .errors ul { margin: 7px 0 0; padding-left: 19px; }
+    .empty { display: grid; place-items: center; min-height: 430px; text-align: center; color: var(--muted); }
+    .empty strong { display: block; color: var(--ink); font: 600 24px Bahnschrift, sans-serif; margin-bottom: 7px; }
+    .file-state { color: var(--muted); font: 12px Consolas, monospace; margin-top: 10px; }
+    .task-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+    @media (max-width: 900px) {
+      .shell { padding: 16px; }
+      .masthead { align-items: start; flex-direction: column; }
+      .actions { justify-content: flex-start; }
+      .frame-strip { grid-template-columns: repeat(2, 1fr); }
+      .frame-cell:nth-child(2) { border-right: 0; }
+      .layout { grid-template-columns: 1fr; }
+      .sidebar { position: static; }
+    }
+    @media (max-width: 580px) {
+      .frame-strip, .grid, .grid.three { grid-template-columns: 1fr; }
+      .frame-cell { border-right: 0; border-bottom: 1px dashed rgba(255,255,255,.28); }
+      .panel { padding: 17px; }
+      h1 { font-size: 29px; }
+    }
+    @media (forced-colors: active) {
+      * { box-shadow: none !important; }
+      .status-dot.on { background: Highlight; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <div class="eyebrow">Offline configuration</div>
+        <h1>Scheduled Screenshot</h1>
+        <p class="subtitle">Shape capture tasks without starting a server or sending data anywhere.</p>
+      </div>
+      <div class="actions">
+        <button id="openButton" type="button">Open settings</button>
+        <button id="downloadButton" type="button">Download JSON</button>
+        <button id="saveButton" class="primary" type="button">Save changes</button>
+        <input id="fileInput" type="file" accept="application/json,.json" hidden>
+      </div>
+    </header>
+
+    <section class="frame-strip" aria-label="Configuration summary">
+      <div class="frame-cell"><div class="frame-label">Loaded frame</div><div class="frame-value" id="fileStat">Example settings</div></div>
+      <div class="frame-cell"><div class="frame-label">Tasks</div><div class="frame-value" id="taskStat">0</div></div>
+      <div class="frame-cell"><div class="frame-label">Enabled</div><div class="frame-value" id="enabledStat">0</div></div>
+      <div class="frame-cell"><div class="frame-label">Fastest interval</div><div class="frame-value" id="intervalStat">—</div></div>
+    </section>
+
+    <div id="errorBox" class="errors" hidden role="alert"></div>
+
+    <div class="layout">
+      <aside class="sidebar" aria-label="Configuration sections">
+        <div class="sidebar-head"><button id="addTask" class="primary" type="button">Add task</button></div>
+        <nav id="taskNav"></nav>
+      </aside>
+      <section id="editorPanel" class="panel" aria-live="polite"></section>
+    </div>
+    <div class="file-state" id="fileState">Open the application's settings.json to edit it in place.</div>
+  </main>
+
+  <script>
+    'use strict';
+    const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    const TOKENS = ['{timestamp}','{date}','{time}','{task}','{taskId}','{taskId8}','{display}','{displayIndex}'];
+    const FACTORS = { seconds: 1, minutes: 60, hours: 3600 };
+    let fileHandle = null;
+    let fileName = 'settings.json';
+    let selected = 'application';
+    let intervalUnits = {};
+    let durationUnits = {};
+    let config = defaultConfig();
+
+    function defaultConfig() {
+      return {
+        schemaVersion: 1,
+        paused: false,
+        logging: { level: 'info', directory: 'logs', maxFileSizeMb: 5, retainedFiles: 5 },
+        tasks: []
+      };
+    }
+
+    function newTask(name = 'New task') {
+      return {
+        id: crypto.randomUUID ? crypto.randomUUID() : fallbackUuid(),
+        name,
+        enabled: false,
+        capture: {
+          outputFolder: '%USERPROFILE%\\Pictures\\Scheduled Screenshots',
+          fileNameTemplate: '{timestamp}_{display}', imageFormat: 'jpeg', jpegQuality: 85, includeCursor: false
+        },
+        schedule: {
+          type: 'interval', intervalSeconds: 60, weekdays: DAYS.slice(), activeHoursEnabled: false,
+          activeStart: '09:00:00', activeEnd: '17:00:00', times: ['09:00:00']
+        },
+        stopCondition: { mode: 'none', endAtLocal: null, durationSeconds: null }
+      };
+    }
+
+    function fallbackUuid() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 3 | 8)).toString(16);
+      });
+    }
+
+    function normalize(value) {
+      const base = defaultConfig();
+      const next = value && typeof value === 'object' ? value : base;
+      next.schemaVersion = next.schemaVersion ?? 1;
+      next.paused = !!next.paused;
+      next.logging = Object.assign(base.logging, next.logging || {});
+      next.tasks = Array.isArray(next.tasks) ? next.tasks : [];
+      next.tasks.forEach(task => {
+        task.capture = Object.assign(newTask().capture, task.capture || {});
+        task.schedule = Object.assign(newTask().schedule, task.schedule || {});
+        task.stopCondition = Object.assign(newTask().stopCondition, task.stopCondition || {});
+        task.schedule.weekdays = Array.isArray(task.schedule.weekdays) ? task.schedule.weekdays : [];
+        task.schedule.times = Array.isArray(task.schedule.times) ? task.schedule.times : [];
+      });
+      return next;
+    }
+
+    function render() {
+      renderStats();
+      renderNav();
+      renderPanel();
+    }
+
+    function renderStats() {
+      document.getElementById('fileStat').textContent = fileName || 'Unsaved settings';
+      document.getElementById('taskStat').textContent = String(config.tasks.length);
+      document.getElementById('enabledStat').textContent = String(config.tasks.filter(t => t.enabled).length);
+      const intervals = config.tasks.filter(t => t.enabled && t.schedule.type === 'interval').map(t => t.schedule.intervalSeconds);
+      document.getElementById('intervalStat').textContent = intervals.length ? formatSeconds(Math.min(...intervals)) : '—';
+    }
+
+    function renderNav() {
+      const nav = document.getElementById('taskNav');
+      nav.innerHTML = `<button class="nav-item ${selected === 'application' ? 'active' : ''}" data-select="application" type="button">
+        <span class="status-dot ${config.paused ? '' : 'on'}"></span><span>Application</span><span class="nav-meta">LOG</span></button>` +
+        config.tasks.map(task => `<button class="nav-item ${selected === task.id ? 'active' : ''}" data-select="${escapeHtml(task.id)}" type="button">
+          <span class="status-dot ${task.enabled ? 'on' : ''}"></span><span>${escapeHtml(task.name)}</span><span class="nav-meta">${task.schedule.type === 'fixed' ? 'FIX' : formatSeconds(task.schedule.intervalSeconds)}</span></button>`).join('');
+    }
+
+    function renderPanel() {
+      const panel = document.getElementById('editorPanel');
+      if (selected === 'application') {
+        panel.innerHTML = applicationPanel();
+        return;
+      }
+      const task = config.tasks.find(item => item.id === selected);
+      if (!task) {
+        panel.innerHTML = `<div class="empty"><div><strong>No task selected</strong>Add a task or choose one from the list.</div></div>`;
+        return;
+      }
+      panel.innerHTML = taskPanel(task);
+    }
+
+    function applicationPanel() {
+      const logging = config.logging;
+      return `<div class="panel-head"><div><h2>Application</h2><p class="panel-note">Global pause and bounded diagnostic logging.</p></div></div>
+        <div class="section"><h3>Capture state</h3><label class="check-row"><input type="checkbox" data-app="paused" ${config.paused ? 'checked' : ''}> Pause all scheduled tasks</label>
+        <p class="hint">Deadlines continue while globally paused.</p></div>
+        <div class="section"><h3>Diagnostic logging</h3><div class="grid three">
+          ${selectField('Level','app-logging-level',logging.level,[['error','Errors only'],['info','Events and errors'],['debug','Debug, events, and errors']])}
+          ${numberField('Maximum file size (MB)','app-logging-maxFileSizeMb',logging.maxFileSizeMb,1,100)}
+          ${numberField('Retained files','app-logging-retainedFiles',logging.retainedFiles,1,20)}
+          ${textField('Directory','app-logging-directory',logging.directory,'wide','Relative to the portable application directory.')}
+        </div>${logging.level === 'debug' ? '<div class="warning">Debug mode records per-monitor and scheduler detail. One-second tasks can rotate logs quickly.</div>' : ''}</div>`;
+    }
+
+    function taskPanel(task) {
+      const schedule = task.schedule;
+      const stop = task.stopCondition;
+      const capture = task.capture;
+      const intervalUnit = intervalUnits[task.id] || bestUnit(schedule.intervalSeconds || 1);
+      intervalUnits[task.id] = intervalUnit;
+      const durationUnit = durationUnits[task.id] || bestUnit(stop.durationSeconds || 3600);
+      durationUnits[task.id] = durationUnit;
+      const intervalValue = roundDisplay((schedule.intervalSeconds || 1) / FACTORS[intervalUnit]);
+      const durationValue = roundDisplay((stop.durationSeconds || 3600) / FACTORS[durationUnit]);
+      const highFrequency = task.enabled && schedule.type === 'interval' && schedule.intervalSeconds < 5;
+      return `<div class="panel-head"><div><h2>${escapeHtml(task.name)}</h2><p class="panel-note">${escapeHtml(task.id)}</p></div>
+        <div class="task-tools"><button type="button" data-action="up" class="icon" aria-label="Move task up">↑</button><button type="button" data-action="down" class="icon" aria-label="Move task down">↓</button><button type="button" data-action="duplicate">Duplicate</button><button type="button" data-action="delete" class="danger">Delete</button></div></div>
+        ${highFrequency ? `<div class="warning"><strong>High-frequency capture.</strong> At ${schedule.intervalSeconds} second(s), this task can create ${Math.floor(86400 / schedule.intervalSeconds).toLocaleString()} images per monitor each day.</div>` : ''}
+        <div class="section"><div class="grid">
+          ${textField('Task name','task-name',task.name)}
+          <div class="field"><span class="label">State</span><label class="check-row"><input type="checkbox" data-task="enabled" ${task.enabled ? 'checked' : ''}> Enabled</label></div>
+        </div></div>
+        <div class="section"><h3>Schedule</h3><div class="grid">
+          ${selectField('Schedule type','task-schedule-type',schedule.type,[['interval','Recurring interval'],['fixed','Fixed local times']])}
+          ${schedule.type === 'interval' ? `<div class="field"><label for="intervalValue">Interval</label><div class="unit-input"><input id="intervalValue" type="number" min="0.0003" step="any" value="${intervalValue}" data-role="intervalValue"><select data-role="intervalUnit">${unitOptions(intervalUnit)}</select></div><div class="hint">Stored as 1–86,400 seconds.</div></div>` : textField('Times','task-schedule-times',schedule.times.join(', '),'','Comma-separated HH:mm:ss values.')}
+          <div class="field wide"><span class="label">Weekdays</span><div class="days">${dayFields(task)}</div></div>
+          ${schedule.type === 'interval' ? `<div class="field wide"><label class="check-row"><input type="checkbox" data-task="activeHoursEnabled" ${schedule.activeHoursEnabled ? 'checked' : ''}> Restrict to active hours</label></div>
+            ${schedule.activeHoursEnabled ? textField('Active start','task-schedule-activeStart',schedule.activeStart,'','HH:mm:ss') + textField('Active end','task-schedule-activeEnd',schedule.activeEnd,'','HH:mm:ss; must be later on the same day.') : ''}` : ''}
+        </div></div>
+        <div class="section"><h3>End condition</h3><div class="grid">
+          ${selectField('Stop mode','task-stop-mode',stop.mode,[['none','Continue until disabled'],['at','Exact local date and time'],['duration','After a duration']])}
+          ${stop.mode === 'at' ? `<div class="field"><label for="endAt">End at</label><input id="endAt" type="datetime-local" step="1" value="${escapeHtml(stop.endAtLocal || '')}" data-task="endAtLocal"></div>` : ''}
+          ${stop.mode === 'duration' ? `<div class="field"><label for="durationValue">Duration</label><div class="unit-input"><input id="durationValue" type="number" min="0.0003" step="any" value="${durationValue}" data-role="durationValue"><select data-role="durationUnit">${unitOptions(durationUnit)}</select></div><div class="hint">Stored as 1 second through 365 days.</div></div>` : ''}
+        </div></div>
+        <div class="section"><h3>Image</h3><div class="grid three">
+          ${selectField('Format','task-capture-imageFormat',capture.imageFormat,[['jpeg','JPEG'],['png','PNG']])}
+          ${numberField('JPEG quality','task-capture-jpegQuality',capture.jpegQuality,50,100)}
+          <div class="field"><span class="label">Pointer</span><label class="check-row"><input type="checkbox" data-task="includeCursor" ${capture.includeCursor ? 'checked' : ''}> Include cursor</label></div>
+        </div></div>
+        <div class="section"><h3>Storage</h3><div class="grid">
+          ${textField('Output folder','task-capture-outputFolder',capture.outputFolder,'wide')}
+          <div class="field wide"><label for="filenameTemplate">Filename template</label><input id="filenameTemplate" type="text" value="${escapeHtml(capture.fileNameTemplate)}" data-task="fileNameTemplate">
+            <div class="token-row">${TOKENS.map(token => `<button type="button" data-token="${token}">${token}</button>`).join('')}</div>
+            <div class="preview">${escapeHtml(previewFilename(task))}</div><div class="hint">The extension is added automatically. Include {display} or {displayIndex}.</div></div>
+        </div></div>`;
+    }
+
+    function textField(label,id,value,classes='',hint='') {
+      return `<div class="field ${classes}"><label for="${id}">${label}</label><input id="${id}" type="text" value="${escapeHtml(value ?? '')}" data-bind="${id}">${hint ? `<div class="hint">${hint}</div>` : ''}</div>`;
+    }
+    function numberField(label,id,value,min,max) {
+      return `<div class="field"><label for="${id}">${label}</label><input id="${id}" type="number" min="${min}" max="${max}" step="1" value="${Number(value)}" data-bind="${id}"></div>`;
+    }
+    function selectField(label,id,value,options) {
+      return `<div class="field"><label for="${id}">${label}</label><select id="${id}" data-bind="${id}">${options.map(([key,text]) => `<option value="${key}" ${key === value ? 'selected' : ''}>${text}</option>`).join('')}</select></div>`;
+    }
+    function dayFields(task) {
+      return DAYS.map(day => `<label class="day"><input type="checkbox" data-day="${day}" ${task.schedule.weekdays.includes(day) ? 'checked' : ''}><span>${day}</span></label>`).join('');
+    }
+    function unitOptions(selectedUnit) {
+      return Object.keys(FACTORS).map(unit => `<option value="${unit}" ${unit === selectedUnit ? 'selected' : ''}>${unit}</option>`).join('');
+    }
+
+    function handleBoundInput(target) {
+      const task = config.tasks.find(item => item.id === selected);
+      const id = target.dataset.bind;
+      if (id) {
+        const mappings = {
+          'app-logging-level': () => config.logging.level = target.value,
+          'app-logging-directory': () => config.logging.directory = target.value,
+          'app-logging-maxFileSizeMb': () => config.logging.maxFileSizeMb = Number(target.value),
+          'app-logging-retainedFiles': () => config.logging.retainedFiles = Number(target.value),
+          'task-name': () => task.name = target.value,
+          'task-schedule-type': () => task.schedule.type = target.value,
+          'task-stop-mode': () => task.stopCondition.mode = target.value,
+          'task-schedule-times': () => task.schedule.times = target.value.split(/[\n,]+/).map(v => v.trim()).filter(Boolean),
+          'task-schedule-activeStart': () => task.schedule.activeStart = target.value,
+          'task-schedule-activeEnd': () => task.schedule.activeEnd = target.value,
+          'task-capture-imageFormat': () => task.capture.imageFormat = target.value,
+          'task-capture-jpegQuality': () => task.capture.jpegQuality = Number(target.value),
+          'task-capture-outputFolder': () => task.capture.outputFolder = target.value
+        };
+        if (mappings[id]) mappings[id]();
+        if (target.tagName === 'SELECT') render(); else renderStatsAndNav();
+        return;
+      }
+      if (target.dataset.app === 'paused') { config.paused = target.checked; renderStatsAndNav(); return; }
+      if (!task) return;
+      const key = target.dataset.task;
+      if (key === 'enabled') task.enabled = target.checked;
+      else if (key === 'activeHoursEnabled') task.schedule.activeHoursEnabled = target.checked;
+      else if (key === 'endAtLocal') task.stopCondition.endAtLocal = target.value ? (target.value.length === 16 ? target.value + ':00' : target.value) : null;
+      else if (key === 'includeCursor') task.capture.includeCursor = target.checked;
+      else if (key === 'fileNameTemplate') task.capture.fileNameTemplate = target.value;
+      if (key === 'activeHoursEnabled') render(); else { renderStatsAndNav(); if (key === 'fileNameTemplate') refreshPreview(task); }
+    }
+
+    function handleRoleInput(target) {
+      const task = config.tasks.find(item => item.id === selected);
+      if (!task) return;
+      if (target.dataset.role === 'intervalUnit') { intervalUnits[task.id] = target.value; renderPanel(); return; }
+      if (target.dataset.role === 'durationUnit') { durationUnits[task.id] = target.value; renderPanel(); return; }
+      if (target.dataset.role === 'intervalValue') task.schedule.intervalSeconds = Math.max(1, Math.round(Number(target.value) * FACTORS[intervalUnits[task.id]]));
+      if (target.dataset.role === 'durationValue') task.stopCondition.durationSeconds = Math.max(1, Math.round(Number(target.value) * FACTORS[durationUnits[task.id]]));
+      renderStatsAndNav();
+    }
+
+    function renderStatsAndNav() { renderStats(); renderNav(); }
+    function refreshPreview(task) {
+      const preview = document.querySelector('.preview');
+      if (preview) preview.textContent = previewFilename(task);
+    }
+
+    function previewFilename(task) {
+      const sample = {
+        timestamp: '20260824_135901_042', date: '20260824', time: '135901', task: sanitize(task.name),
+        taskId: task.id, taskId8: task.id.replace(/-/g,'').slice(0,8), display: 'DISPLAY1', displayIndex: '1'
+      };
+      const stem = String(task.capture.fileNameTemplate || '').replace(/\{([A-Za-z0-9]+)\}/g, (_, key) => sample[key] ?? `{${key}}`);
+      return `2026-08-24\\${stem}.${task.capture.imageFormat === 'png' ? 'png' : 'jpg'}`;
+    }
+
+    function validate() {
+      const errors = [];
+      if (config.schemaVersion !== 1) errors.push('schemaVersion must be 1.');
+      if (!['error','info','debug'].includes(config.logging.level)) errors.push('Logging level is invalid.');
+      if (!config.logging.directory || /^[A-Za-z]:|^[/\\]|\.\./.test(config.logging.directory)) errors.push('Log directory must remain inside the application directory.');
+      if (config.tasks.length > 100) errors.push('No more than 100 tasks are allowed.');
+      const ids = new Set(), names = new Set();
+      config.tasks.forEach((task, index) => {
+        const prefix = `Task ${index + 1}`;
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(task.id)) errors.push(`${prefix} has an invalid GUID.`);
+        if (ids.has(task.id.toLowerCase())) errors.push(`${prefix} has a duplicate ID.`); ids.add(task.id.toLowerCase());
+        const normalizedName = String(task.name || '').trim().toLowerCase();
+        if (!normalizedName || normalizedName.length > 64) errors.push(`${prefix} name must contain 1–64 characters.`);
+        if (names.has(normalizedName)) errors.push(`${prefix} has a duplicate name.`); names.add(normalizedName);
+        if (!task.schedule.weekdays.length) errors.push(`${prefix} needs at least one weekday.`);
+        if (task.schedule.type === 'interval' && (task.schedule.intervalSeconds < 1 || task.schedule.intervalSeconds > 86400)) errors.push(`${prefix} interval must be 1–86,400 seconds.`);
+        if (task.schedule.type === 'fixed' && (!task.schedule.times.length || task.schedule.times.some(t => !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(t)))) errors.push(`${prefix} fixed times must use HH:mm:ss.`);
+        if (task.schedule.activeHoursEnabled && (!validClock(task.schedule.activeStart) || !validClock(task.schedule.activeEnd) || task.schedule.activeStart >= task.schedule.activeEnd)) errors.push(`${prefix} active hours must be same-day and start before end.`);
+        if (task.stopCondition.mode === 'at' && (!task.stopCondition.endAtLocal || (task.enabled && new Date(task.stopCondition.endAtLocal) <= new Date()))) errors.push(`${prefix} needs a future exact end time.`);
+        if (task.stopCondition.mode === 'duration' && (task.stopCondition.durationSeconds < 1 || task.stopCondition.durationSeconds > 31536000)) errors.push(`${prefix} duration must be 1 second through 365 days.`);
+        if (!['jpeg','png'].includes(task.capture.imageFormat)) errors.push(`${prefix} image format is invalid.`);
+        if (task.capture.jpegQuality < 50 || task.capture.jpegQuality > 100) errors.push(`${prefix} JPEG quality must be 50–100.`);
+        const template = task.capture.fileNameTemplate || '';
+        if (template.length > 180 || /[\\/:<>"|?*]/.test(template)) errors.push(`${prefix} filename template contains an invalid character.`);
+        if (!/\{display(Index)?\}/i.test(template)) errors.push(`${prefix} filename template needs {display} or {displayIndex}.`);
+        const leftovers = template.replace(/\{(timestamp|date|time|task|taskId|taskId8|display|displayIndex)\}/gi,'');
+        if (/[{}]/.test(leftovers)) errors.push(`${prefix} filename template contains an unknown or malformed token.`);
+      });
+      return errors;
+    }
+
+    function showErrors(errors) {
+      const box = document.getElementById('errorBox');
+      box.hidden = errors.length === 0;
+      box.innerHTML = errors.length ? `<strong>Fix these settings before saving:</strong><ul>${errors.map(error => `<li>${escapeHtml(error)}</li>`).join('')}</ul>` : '';
+      if (errors.length) box.scrollIntoView({ behavior: 'auto', block: 'start' });
+    }
+
+    async function openSettings() {
+      try {
+        if ('showOpenFilePicker' in window) {
+          [fileHandle] = await window.showOpenFilePicker({ multiple: false, types: [{ description: 'Scheduled Screenshot settings', accept: { 'application/json': ['.json'] } }] });
+          const file = await fileHandle.getFile();
+          await loadFile(file);
+        } else {
+          document.getElementById('fileInput').click();
+        }
+      } catch (error) { if (error.name !== 'AbortError') showErrors([error.message]); }
+    }
+
+    async function loadFile(file) {
+      try {
+        config = normalize(JSON.parse(await file.text()));
+        fileName = file.name;
+        selected = 'application';
+        showErrors([]);
+        document.getElementById('fileState').textContent = `${file.name} loaded. The tray application will validate changes again after save.`;
+        render();
+      } catch (error) { showErrors(['Unable to load JSON: ' + error.message]); }
+    }
+
+    async function saveChanges() {
+      const errors = validate(); showErrors(errors); if (errors.length) return;
+      const json = JSON.stringify(config, null, 2) + '\n';
+      if (fileHandle && fileHandle.createWritable) {
+        try {
+          const writable = await fileHandle.createWritable(); await writable.write(json); await writable.close();
+          document.getElementById('fileState').textContent = `${fileName} saved. The tray application will reload it automatically.`;
+          return;
+        } catch (error) { showErrors(['Unable to save in place: ' + error.message]); return; }
+      }
+      downloadJson(json);
+      document.getElementById('fileState').textContent = 'A replacement settings.json was downloaded. Move it beside the executable.';
+    }
+
+    function downloadJson(contents = null) {
+      const errors = validate(); showErrors(errors); if (errors.length) return;
+      const blob = new Blob([contents || JSON.stringify(config, null, 2) + '\n'], { type: 'application/json' });
+      const anchor = document.createElement('a'); anchor.href = URL.createObjectURL(blob); anchor.download = 'settings.json'; anchor.click();
+      setTimeout(() => URL.revokeObjectURL(anchor.href), 1000);
+    }
+
+    function taskAction(action) {
+      const index = config.tasks.findIndex(item => item.id === selected); if (index < 0) return;
+      if (action === 'delete') {
+        if (!confirm(`Delete “${config.tasks[index].name}”?`)) return;
+        config.tasks.splice(index, 1); selected = config.tasks[index]?.id || config.tasks[index - 1]?.id || 'application';
+      } else if (action === 'duplicate') {
+        const copy = JSON.parse(JSON.stringify(config.tasks[index])); copy.id = crypto.randomUUID ? crypto.randomUUID() : fallbackUuid(); copy.name = uniqueName(copy.name + ' copy'); copy.enabled = false;
+        config.tasks.splice(index + 1, 0, copy); selected = copy.id;
+      } else if (action === 'up' && index > 0) {
+        [config.tasks[index - 1], config.tasks[index]] = [config.tasks[index], config.tasks[index - 1]];
+      } else if (action === 'down' && index < config.tasks.length - 1) {
+        [config.tasks[index + 1], config.tasks[index]] = [config.tasks[index], config.tasks[index + 1]];
+      }
+      render();
+    }
+
+    function uniqueName(base) { let name = base, i = 2; const used = new Set(config.tasks.map(t => t.name.toLowerCase())); while (used.has(name.toLowerCase())) name = `${base} ${i++}`; return name; }
+    function bestUnit(seconds) { return seconds % 3600 === 0 ? 'hours' : seconds % 60 === 0 ? 'minutes' : 'seconds'; }
+    function roundDisplay(value) { return Math.round(value * 10000) / 10000; }
+    function formatSeconds(value) { return value >= 3600 && value % 3600 === 0 ? `${value / 3600}h` : value >= 60 && value % 60 === 0 ? `${value / 60}m` : `${value}s`; }
+    function validClock(value) { return /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(value || ''); }
+    function sanitize(value) { return String(value || 'unnamed').replace(/[\\/:<>"|?*\x00-\x1f]/g,'_').replace(/[. ]+$/,'') || 'unnamed'; }
+    function escapeHtml(value) { return String(value ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    document.getElementById('openButton').addEventListener('click', openSettings);
+    document.getElementById('saveButton').addEventListener('click', saveChanges);
+    document.getElementById('downloadButton').addEventListener('click', () => downloadJson());
+    document.getElementById('fileInput').addEventListener('change', event => { if (event.target.files[0]) loadFile(event.target.files[0]); });
+    document.getElementById('addTask').addEventListener('click', () => { const task = newTask(uniqueName('New task')); config.tasks.push(task); selected = task.id; render(); });
+    document.addEventListener('click', event => {
+      const select = event.target.closest('[data-select]'); if (select) { selected = select.dataset.select; render(); return; }
+      const action = event.target.closest('[data-action]'); if (action) { taskAction(action.dataset.action); return; }
+      const token = event.target.closest('[data-token]'); if (token) {
+        const task = config.tasks.find(item => item.id === selected); if (!task) return;
+        task.capture.fileNameTemplate += token.dataset.token; renderPanel();
+      }
+    });
+    document.addEventListener('input', event => { handleBoundInput(event.target); handleRoleInput(event.target); });
+    document.addEventListener('change', event => {
+      if (event.target.dataset.day) {
+        const task = config.tasks.find(item => item.id === selected); if (!task) return;
+        task.schedule.weekdays = DAYS.filter(day => document.querySelector(`[data-day="${day}"]`)?.checked); renderStatsAndNav(); return;
+      }
+      handleBoundInput(event.target); handleRoleInput(event.target);
+    });
+
+    render();
+  </script>
+</body>
+</html>

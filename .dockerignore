@@ -1,0 +1,13 @@
+.git
+.gitignore
+.idea
+.vscode
+**/bin
+**/obj
+artifacts
+*.user
+*.suo
+*.log
+logs
+settings.json
+runtime-state.json
