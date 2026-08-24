@@ -151,13 +151,14 @@ namespace ScheduledScreenshot.Services
                 result.Errors.Add(prefix + ".name must be unique.");
             }
 
-            ValidateCapture(task.capture, prefix, applicationDirectory, verifyWritablePaths && task.enabled, result);
+            ValidateCapture(task.capture, task, prefix, applicationDirectory, verifyWritablePaths && task.enabled, result);
             ValidateSchedule(task.schedule, prefix, result);
             ValidateStop(task.stopCondition, prefix, task.enabled, result);
         }
 
         private static void ValidateCapture(
             CaptureSettings capture,
+            ScreenshotTaskSettings task,
             string prefix,
             string applicationDirectory,
             bool verifyWritablePaths,
@@ -190,7 +191,7 @@ namespace ScheduledScreenshot.Services
             {
                 var output = ResolveDirectory(capture.outputFolder, applicationDirectory);
                 var sampleName = FileNameTemplate.Expand(capture.fileNameTemplate,
-                    new ScreenshotTaskSettings { id = Guid.NewGuid().ToString(), name = "Sample task" },
+                    task,
                     DateTime.Now, @"\\.\DISPLAY1", 1) + "." + (capture.imageFormat == "png" ? "png" : "jpg");
                 if (Path.Combine(output, DateTime.Now.ToString("yyyy-MM-dd"), sampleName).Length > 240)
                 {

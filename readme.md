@@ -2,7 +2,7 @@
 
 A lightweight Windows 10 tray application for running multiple scheduled screenshot tasks. Each task can use its own timing, output directory, filename template, image format, cursor preference, and stop condition.
 
-> Status: implemented and cross-compiled with Docker. Interactive Windows 10 capture and resource acceptance testing must run on Windows hardware or a Windows VM.
+> Status: implemented, cross-compiled with Docker, and covered by an automated package-to-runtime smoke test on Windows. Interactive capture, session-event, multi-monitor, and resource acceptance testing still require Windows hardware or a Windows VM.
 
 ## Goals
 
@@ -191,7 +191,7 @@ Export the compiled portable files without creating a runnable Linux image:
 docker build --target artifacts --output type=local,dest=artifacts/docker .
 ```
 
-The Linux container cross-compiles the .NET Framework application and executes seven linked core tests against the same scheduler, validation, and filename-template source files. It cannot execute WinForms, access an interactive Windows desktop, or verify Windows session/GDI behavior.
+The Linux container cross-compiles the .NET Framework application and executes eight linked core tests against the same scheduler, validation, and filename-template source files. It cannot execute WinForms, access an interactive Windows desktop, or verify Windows session/GDI behavior.
 
 ### Native Windows build and tests
 
@@ -203,7 +203,30 @@ dotnet build ScreenCapture.sln --configuration Release --no-restore --property:P
 dotnet test tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj --configuration Release --no-build --property:Platform=x64
 ```
 
-Release output is written to `src\ScheduledScreenshot\bin\x64\Release\net48`. The included GitHub Actions workflow performs the same build/tests and creates a portable ZIP plus SHA-256 checksum.
+Run the end-to-end production smoke test to restore, build, package, extract, and launch the real portable executable in a clean temporary directory:
+
+```powershell
+.\scripts\test-production.ps1
+```
+
+The smoke test verifies:
+
+- Required executable and editor files are present in the portable ZIP.
+- The packaged application starts and remains running.
+- Default `settings.json` is generated with schema version 1 and accepted.
+- Diagnostic logs contain `APP_START`, `CONFIG_ACCEPTED`, and `APP_EXIT`.
+- A second process is rejected by the single-instance guard without stopping the first.
+- The application shuts down cleanly with exit code 0.
+
+The smoke configuration contains no enabled capture tasks, so this check does not take a screenshot or replace the Windows monitor/session acceptance tests. Temporary files and processes are cleaned up even when the test fails.
+
+To test an already-built production ZIP, use the same mode as CI:
+
+```powershell
+.\scripts\test-production.ps1 -NoBuild -PackagePath artifacts\ScheduledScreenshot-win-x64.zip
+```
+
+Release output is written to `src\ScheduledScreenshot\bin\x64\Release\net48`. The GitHub Actions workflow checks the offline editor, builds the release, runs unit tests, creates the portable ZIP and SHA-256 checksum, runs the production smoke test against that exact ZIP, and uploads both release artifacts.
 
 ### Offline editor check
 
@@ -221,6 +244,7 @@ This parses the editor's JavaScript and checks required offline configuration fe
 src/ScheduledScreenshot/           WinForms application and offline editor
 tests/ScheduledScreenshot.Tests/   Scheduler, validation, and filename tests
 scripts/check-editor.js             Static editor verification
+scripts/test-production.ps1         Build-to-production Windows smoke test
 .github/workflows/                  Windows build, test, and packaging
 Dockerfile                          Cross-platform restore/build environment
 ```

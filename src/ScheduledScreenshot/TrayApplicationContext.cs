@@ -77,6 +77,11 @@ namespace ScheduledScreenshot
             UpdateStatus();
         }
 
+        internal void ExitApplication()
+        {
+            ExitThread();
+        }
+
         protected override void ExitThreadCore()
         {
             if (_exiting) return;

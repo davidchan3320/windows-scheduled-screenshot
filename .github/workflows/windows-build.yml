@@ -35,6 +35,10 @@ jobs:
           Compress-Archive -Path src/ScheduledScreenshot/bin/x64/Release/net48/* -DestinationPath artifacts/ScheduledScreenshot-win-x64.zip
           (Get-FileHash artifacts/ScheduledScreenshot-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() + '  ScheduledScreenshot-win-x64.zip' | Set-Content artifacts/ScheduledScreenshot-win-x64.sha256
 
+      - name: Production smoke test
+        shell: pwsh
+        run: ./scripts/test-production.ps1 -NoBuild -PackagePath artifacts/ScheduledScreenshot-win-x64.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

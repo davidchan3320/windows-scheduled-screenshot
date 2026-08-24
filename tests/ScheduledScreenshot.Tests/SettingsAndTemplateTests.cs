@@ -55,5 +55,26 @@ namespace ScheduledScreenshot.Tests
             Assert.IsFalse(result.IsValid);
             Assert.IsTrue(result.Errors.Any(error => error.Contains("logging.directory")));
         }
+
+        [TestMethod]
+        public void LongRealTaskNameIsIncludedInPathLengthValidation()
+        {
+            var settings = new AppSettings();
+            settings.tasks.Add(new ScreenshotTaskSettings
+            {
+                enabled = false,
+                name = new string('x', 64),
+                capture = new CaptureSettings
+                {
+                    outputFolder = new string('o', 150),
+                    fileNameTemplate = "{task}_{display}"
+                }
+            });
+
+            var result = SettingsValidator.Validate(settings, Path.GetTempPath(), false);
+
+            Assert.IsFalse(result.IsValid);
+            Assert.IsTrue(result.Errors.Any(error => error.Contains("path longer than 240")));
+        }
     }
 }
