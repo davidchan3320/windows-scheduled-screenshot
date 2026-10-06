@@ -1,8 +1,8 @@
 # Scheduled Screenshot Tool
 
-A lightweight Windows 10 tray application for running multiple scheduled screenshot tasks. Each task can use its own timing, output directory, filename template, image format, cursor preference, and stop condition.
+A lightweight Windows 10 tray and native macOS menu-bar application for running multiple scheduled screenshot tasks. Each task can use its own timing, output directory, filename template, image format, cursor preference, and stop condition.
 
-> Status: implemented, cross-compiled with Docker, and covered by an automated package-to-runtime smoke test on Windows. Interactive capture, session-event, multi-monitor, and resource acceptance testing still require Windows hardware or a Windows VM.
+> Windows uses .NET Framework 4.8 and WinForms; macOS uses a native Swift menu-bar app. Interactive capture, session-event, multi-monitor, and resource acceptance checks need hardware or a VM running the corresponding operating system.
 
 ## Goals
 
@@ -22,10 +22,44 @@ A lightweight Windows 10 tray application for running multiple scheduled screens
 - Windows 10 22H2 x64
 - .NET Framework 4.8
 - WinForms notification-area application
+- macOS 14+ native AppKit menu-bar application (Intel and Apple Silicon)
 
 Windows 10 22H2 includes .NET Framework 4.8, avoiding a separately installed application runtime.
 
-## Quick start
+## Quick start (macOS)
+
+Requires **macOS 14 Sonoma or newer**, on Intel or Apple Silicon. The Mac app does not require .NET. Building from source requires Xcode or Apple's Command Line Tools.
+
+1. Download and extract `ScheduledScreenshot-macos-universal.zip`, or build from the repository root:
+
+   ```sh
+   bash scripts/build-macos.sh --arch universal
+   ```
+
+2. Open **Scheduled Screenshot.app** from the extracted ZIP or the build output. To launch the locally built app:
+
+   ```sh
+   open "artifacts/ScheduledScreenshot-macos-universal/Scheduled Screenshot.app"
+   ```
+
+   You can copy the app to Applications before launching it. Downloaded development bundles are ad-hoc signed and not notarized; macOS may require **Open Anyway** approval in System Settings → Privacy & Security.
+
+3. Click the camera icon in the menu bar and choose **Grant Screen Recording Access**. Enable Scheduled Screenshot in System Settings → Privacy & Security → **Screen Recording** (or **Screen & System Audio Recording**, depending on macOS version). Restart the app if macOS asks you to.
+4. Choose **Open Settings Folder** to locate `settings.json`, then **Configure in Browser** to open the offline editor. In the editor, open that settings file.
+5. Add or edit a task, enable it, and save. The initial task is disabled. If the browser downloads a replacement `settings.json`, copy it over the original in the settings folder. Valid changes apply automatically.
+6. Choose **Capture Now** and your task to capture immediately, then leave the app running for scheduled captures. Use **Pause All** to pause scheduling or **Quit Scheduled Screenshot** to close the app.
+
+Default Mac locations:
+
+| Files | Location |
+| --- | --- |
+| Settings and runtime state | `~/Library/Application Support/ScheduledScreenshot/` |
+| Diagnostic logs | `~/Library/Application Support/ScheduledScreenshot/logs/` |
+| Screenshots, grouped by date | `~/Pictures/Scheduled Screenshots/` |
+
+Relative output and log paths resolve from the settings folder. To start automatically when you sign in, add the app in System Settings → General → Login Items. See [macOS setup and development](docs/macos.md) for architecture-specific builds and further details.
+
+## Quick start (Windows)
 
 1. Download the portable `ScheduledScreenshot-win-x64.zip` or build it using the instructions below.
 2. Extract every file to a writable directory, such as `%LOCALAPPDATA%\ScheduledScreenshot`. Do not run the executable from inside the ZIP.
@@ -40,16 +74,17 @@ To stop all scheduled captures temporarily, select **Pause All**. Select **Exit*
 
 ## Operation
 
-The application runs visibly in the Windows notification area. Its menu provides:
+The application runs visibly in the Windows notification area or macOS menu bar. Its menu provides:
 
 - Next scheduled task and occurrence
 - Capture Now, with task selection
 - Pause or resume all tasks
 - Configure in Browser
-- Edit JSON in Notepad
+- Edit JSON (Notepad on Windows)
+- Open Settings Folder and Grant Screen Recording Access on macOS
 - Open a task's output folder
 - Open Logs
-- Exit
+- Exit on Windows or Quit Scheduled Screenshot on macOS
 
 Only one application instance will run. The application will watch `settings.json` and apply valid edits without requiring a restart.
 
@@ -109,7 +144,7 @@ Key rules:
 - Logging levels are `error`, `info`, and `debug`; `info` is the default.
 - Unknown future properties are tolerated, but invalid required values reject the edit.
 
-The static configuration editor will load a user-selected `settings.json`. In browsers that support direct file access it can save in place; otherwise, it downloads a replacement file. Editing the JSON in Notepad remains the universal fallback.
+The static configuration editor will load a user-selected `settings.json`. In browsers that support direct file access it can save in place; otherwise, it downloads a replacement file. **Edit JSON** opens the file in Notepad on Windows or the associated editor on macOS.
 
 ## Scheduling behavior
 
@@ -140,7 +175,7 @@ Supported filename tokens are:
 - `{task}`: sanitized task name
 - `{taskId}`: full task GUID
 - `{taskId8}`: first eight GUID characters
-- `{display}`: sanitized Windows display name
+- `{display}`: sanitized display name (with a display ID on macOS)
 - `{displayIndex}`: one-based display number
 
 The template must include `{display}` or `{displayIndex}` because every monitor is saved separately. It cannot contain path separators; subdirectories remain controlled by `outputFolder` and the application's date-directory layout. The application appends the format extension and adds a numeric collision suffix rather than overwriting an existing file.
@@ -150,11 +185,11 @@ Formats:
 - JPEG, quality 50-100; default 85
 - PNG, lossless
 
-Screenshots are retained until the user deletes them. They inherit the selected directory's normal Windows permissions and are not encrypted or uploaded.
+Screenshots are retained until the user deletes them. They inherit the selected directory's filesystem permissions and are not encrypted or uploaded.
 
 ## Diagnostic logs
 
-The application writes UTF-8 JSON Lines files under the configured directory, defaulting to `logs` beside the executable. Logs rotate daily or after 5 MB, whichever comes first, and retain the newest five files by default.
+The application writes UTF-8 JSON Lines files under the configured directory, defaulting to `logs` beside the executable on Windows or in the settings folder on macOS. Logs rotate daily or after 5 MB, whichever comes first, and retain the newest five files by default.
 
 Each entry contains an ISO-8601 UTC timestamp, severity, stable event ID, message, and relevant task/batch/error context. Normal `info` logging records lifecycle, configuration changes, task completion/skip/end events, capture-batch summaries, session/power changes, and errors. `debug` additionally records scheduler decisions and per-monitor capture/file details.
 
@@ -175,7 +210,7 @@ Continuous one-second capture is an active workload and is not expected to remai
 
 ## Development
 
-The application targets .NET Framework 4.8 and contains Windows-only WinForms/GDI code. Source editing and cross-compilation can happen on macOS or Linux, but execution and desktop integration tests require Windows.
+The Windows application targets .NET Framework 4.8 with WinForms/GDI. The native macOS application uses Swift, AppKit and ScreenCaptureKit. Build the Mac app with `bash scripts/build-macos.sh --arch universal`; see [macOS development and verification](docs/macos.md) for details. Docker cross-compiles the Windows application; Windows desktop integration requires Windows.
 
 ### Docker build on macOS or Linux
 
@@ -241,14 +276,17 @@ This parses the editor's JavaScript and checks required offline configuration fe
 ## Repository layout
 
 ```text
-src/ScheduledScreenshot/           WinForms application and offline editor
+src/ScheduledScreenshot/           WinForms application and shared offline editor
+src/ScheduledScreenshot.Mac/       Native macOS app
+tests/cases/macos/                 Native process E2E case and retained app artifacts
 tests/ScheduledScreenshot.Tests/   Scheduler, validation, and filename tests
 scripts/check-editor.js             Static editor verification
 scripts/test-production.ps1         Build-to-production Windows smoke test
-.github/workflows/                  Windows build, test, and packaging
+scripts/build-macos.sh              Native Mac app bundle and universal packaging
+.github/workflows/                  Windows and macOS build and packaging
 Dockerfile                          Cross-platform restore/build environment
 ```
 
 ## Development plan
 
-See [plan.md](plan.md) for the architecture, implementation phases, validation rules, and test matrix.
+See [plan.md](plan.md) and [macOS implementation plan](docs/plans/2026-10-06-1640-macos-support.md) for the architecture, implementation phases, validation rules, and test matrix.

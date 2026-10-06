@@ -198,7 +198,7 @@
         name,
         enabled: false,
         capture: {
-          outputFolder: '%USERPROFILE%\\Pictures\\Scheduled Screenshots',
+          outputFolder: /Mac/.test(navigator.platform) ? '~/Pictures/Scheduled Screenshots' : '%USERPROFILE%\\Pictures\\Scheduled Screenshots',
           fileNameTemplate: '{timestamp}_{display}', imageFormat: 'jpeg', jpegQuality: 85, includeCursor: false
         },
         schedule: {

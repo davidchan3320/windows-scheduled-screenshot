@@ -9,3 +9,5 @@ artifacts/
 logs/
 settings.json
 runtime-state.json
+tests/cases/*/artifacts/
+**/__pycache__/

@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "paused": false,
+  "logging": {"level": "info", "directory": "logs", "maxFileSizeMb": 5, "retainedFiles": 5},
+  "tasks": [{
+    "id": "491e5e22-748b-41c8-9df0-067053603705",
+    "name": "Workday capture",
+    "enabled": false,
+    "capture": {
+      "outputFolder": "~/Pictures/Scheduled Screenshots",
+      "fileNameTemplate": "{timestamp}_{display}",
+      "imageFormat": "jpeg",
+      "jpegQuality": 85,
+      "includeCursor": false
+    },
+    "schedule": {
+      "type": "interval", "intervalSeconds": 60,
+      "weekdays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      "activeHoursEnabled": true, "activeStart": "09:00:00", "activeEnd": "17:00:00",
+      "times": ["09:00:00"]
+    },
+    "stopCondition": {"mode": "none", "endAtLocal": null, "durationSeconds": null}
+  }]
+}

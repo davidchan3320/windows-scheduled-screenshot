@@ -1,0 +1,31 @@
+name: macOS build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shared offline editor
+        run: node scripts/check-editor.js
+      - name: Build Intel and Apple Silicon app bundle
+        run: bash scripts/build-macos.sh --arch universal
+      - name: Native process E2E
+        run: python3 tests/cases/macos/e2e.py 'artifacts/ScheduledScreenshot-macos-universal/Scheduled Screenshot.app/Contents/MacOS/ScheduledScreenshot'
+      - name: Upload application artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScheduledScreenshot-macos-universal
+          path: |
+            artifacts/ScheduledScreenshot-macos-universal.zip
+            artifacts/ScheduledScreenshot-macos-universal.sha256
+      - name: Upload repeatable E2E application files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-e2e-application-files
+          path: tests/cases/macos/artifacts/
