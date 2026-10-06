@@ -109,8 +109,8 @@ private final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate
         capture.isSessionAvailable = { [weak self] in self?.session.available ?? false }
         capture.onError = { [weak self] message in self?.showWarning(message) }
         scheduler = Scheduler(configuration: configuration) { [weak self] tasks in
-            guard let self = self, !self.terminating else { return }
-            _ = await self.capture.capture(tasks, reason: "scheduled")
+            guard let self = self, !self.terminating else { return CaptureBatchResult(skipped: true) }
+            return await self.capture.capture(tasks, reason: "scheduled")
         }
         configuration.onChange = { [weak self] in self?.refreshAvailability() }
         configuration.onError = { [weak self] message in self?.showWarning(message) }

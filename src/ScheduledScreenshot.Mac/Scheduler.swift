@@ -10,6 +10,15 @@ private struct TaskRuntimeState: Codable, Equatable {
     var durationDeadlineUtc: String?
     var durationSignature: String?
     var lastFixedOccurrence: String?
+    var completedCaptures: Int?
+    var countSignature: String?
+    var completedFixedTimes: [String]?
+
+    func reachedCaptureLimit(for task: ScreenshotTask) -> Bool {
+        (task.stopCondition.mode == "count" && (completedCaptures ?? 0) >= (task.stopCondition.captureCount ?? 1))
+            || (task.schedule.type == "fixedOnce"
+                && task.schedule.times.allSatisfy { (completedFixedTimes ?? []).contains($0) })
+    }
 }
 
 private struct TaskOccurrence {
@@ -21,8 +30,8 @@ private struct TaskOccurrence {
 private enum ScheduleCalculator {
     static func nextOccurrence(for task: ScreenshotTask, state: TaskRuntimeState, after now: Date,
                                calendar: Calendar = .autoupdatingCurrent) -> TaskOccurrence? {
-        guard task.enabled else { return nil }
-        let occurrence = task.schedule.type == "fixed"
+        guard task.enabled, !state.reachedCaptureLimit(for: task) else { return nil }
+        let occurrence = ["fixed", "fixedOnce"].contains(task.schedule.type)
             ? nextFixed(for: task, state: state, after: now, calendar: calendar)
             : nextInterval(for: task, state: state, after: now, calendar: calendar)
         if let occurrence, let deadline = stopDate(for: task, state: state, calendar: calendar), occurrence.due >= deadline {
@@ -86,7 +95,8 @@ private enum ScheduleCalculator {
         for offset in 0...8 {
             guard let day = calendar.date(byAdding: .day, value: offset, to: today),
                   task.schedule.weekdays.contains(dayToken(for: day, calendar: calendar)) else { continue }
-            for (_, clock, _) in clocks {
+            for (text, clock, _) in clocks {
+                if task.schedule.type == "fixedOnce" && (state.completedFixedTimes ?? []).contains(text) { continue }
                 guard let candidate = localTime(clock, on: day, calendar: calendar), candidate > now else { continue }
                 let key = localKey(candidate, calendar: calendar)
                 if key != state.lastFixedOccurrence {
@@ -149,7 +159,7 @@ private final class RuntimeStateStore {
 @MainActor
 final class Scheduler {
     private let configuration: Configuration
-    private let capture: ([ScreenshotTask]) async -> Void
+    private let capture: ([ScreenshotTask]) async -> CaptureBatchResult
     private let stateStore: RuntimeStateStore
     private var state: RuntimeState
     private var settings: AppSettings
@@ -171,7 +181,7 @@ final class Scheduler {
     private(set) var nextDate: Date?
     private(set) var nextName: String?
 
-    init(configuration: Configuration, capture: @escaping ([ScreenshotTask]) async -> Void) {
+    init(configuration: Configuration, capture: @escaping ([ScreenshotTask]) async -> CaptureBatchResult) {
         self.configuration = configuration
         self.capture = capture
         settings = configuration.settings
@@ -192,6 +202,7 @@ final class Scheduler {
         var earliestDeadline: Date?
         for task in settings.tasks where task.enabled {
             guard let runtime = state.tasks[stateKey(task.id)] else { continue }
+            if runtime.reachedCaptureLimit(for: task) { earliestDeadline = now }
             if let deadline = ScheduleCalculator.stopDate(for: task, state: runtime),
                earliestDeadline == nil || deadline < earliestDeadline! { earliestDeadline = deadline }
             if !settings.paused && available,
@@ -251,6 +262,14 @@ final class Scheduler {
                 runtime.scheduleSignature = scheduleSignature
                 runtime.intervalAnchorUtc = ISO8601.string(from: now)
                 runtime.lastFixedOccurrence = nil
+                runtime.completedFixedTimes = []
+                changed = true
+            }
+            let countSignature = task.stopCondition.mode == "count"
+                ? "count:\(task.stopCondition.captureCount ?? 0)" : nil
+            if runtime.countSignature != countSignature {
+                runtime.countSignature = countSignature
+                runtime.completedCaptures = 0
                 changed = true
             }
             let durationSignature = signature(of: task.stopCondition)
@@ -275,15 +294,15 @@ final class Scheduler {
         timer?.invalidate(); timer = nil
         let now = Date()
         let expired = settings.tasks.filter { task in
-            guard task.enabled, let runtime = state.tasks[stateKey(task.id)],
-                  let deadline = ScheduleCalculator.stopDate(for: task, state: runtime) else { return false }
-            return deadline <= now
+            guard task.enabled, let runtime = state.tasks[stateKey(task.id)] else { return false }
+            return runtime.reachedCaptureLimit(for: task)
+                || ScheduleCalculator.stopDate(for: task, state: runtime).map { $0 <= now } == true
         }
         for task in expired {
             configuration.logger.info("TASK_ENDED", "A task reached its configured end condition.",
                                       context: .forTask(task), flush: true)
         }
-        if !expired.isEmpty { _ = configuration.disable(taskIDs: expired.map(\.id)) }
+        if !expired.isEmpty { _ = configuration.disable(tasksIfUnchanged: expired) }
 
         let expiredIDs = Set(expired.map { $0.id.lowercased() })
         var due: [TaskOccurrence] = []
@@ -306,11 +325,15 @@ final class Scheduler {
                 }
             } else {
                 captureInProgress = true
+                let capturedState = state.tasks
                 captureTask = Task { [weak self, capture] in
-                    await capture(tasks)
+                    let result = await capture(tasks)
                     guard !Task.isCancelled else { return }
                     await MainActor.run {
                         guard let self, !self.stopped else { return }
+                        if !result.skipped {
+                            self.recordExecutions(due, successfulIDs: result.successfulTaskIDs, capturedState: capturedState)
+                        }
                         self.captureInProgress = false
                         self.captureTask = nil
                         self.reschedule()
@@ -332,6 +355,43 @@ final class Scheduler {
             changed = true
         }
         if changed { stateStore.save(state) }
+    }
+
+    private func recordExecutions(_ occurrences: [TaskOccurrence], successfulIDs: [String],
+                                  capturedState: [String: TaskRuntimeState]) {
+        let successfulKeys = Set(successfulIDs.map(stateKey))
+        var completedTasks: [ScreenshotTask] = []
+        var changed = false
+        for occurrence in occurrences {
+            let task = occurrence.task
+            let key = stateKey(task.id)
+            guard let currentTask = settings.tasks.first(where: { $0.enabled && stateKey($0.id) == key }),
+                  currentTask.schedule == task.schedule, var runtime = state.tasks[key],
+                  let previous = capturedState[key], runtime.countSignature == previous.countSignature,
+                  runtime.scheduleSignature == previous.scheduleSignature,
+                  runtime.intervalAnchorUtc == previous.intervalAnchorUtc else { continue }
+            if task.stopCondition.mode == "count" && successfulKeys.contains(key) {
+                runtime.completedCaptures = min(2_147_483_647, (runtime.completedCaptures ?? 0) + 1)
+                changed = true
+            }
+            if task.schedule.type == "fixedOnce", let occurrenceKey = occurrence.fixedOccurrenceKey {
+                let clock = String(occurrenceKey.suffix(8))
+                if !(runtime.completedFixedTimes ?? []).contains(clock) {
+                    runtime.completedFixedTimes = (runtime.completedFixedTimes ?? []) + [clock]
+                    changed = true
+                }
+            }
+            state.tasks[key] = runtime
+            if runtime.reachedCaptureLimit(for: currentTask) { completedTasks.append(currentTask) }
+        }
+        if changed { stateStore.save(state) }
+        if !completedTasks.isEmpty {
+            for task in completedTasks {
+                configuration.logger.info("TASK_ENDED", "A task completed its configured executions.",
+                                          context: .forTask(task), flush: true)
+            }
+            _ = configuration.disable(tasksIfUnchanged: completedTasks)
+        }
     }
 
     private func stateKey(_ id: String) -> String { id.lowercased() }

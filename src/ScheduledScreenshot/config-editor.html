@@ -92,7 +92,7 @@
     .field.wide { grid-column: 1 / -1; }
     label, .label { display: block; margin-bottom: 6px; font-weight: 650; }
     .hint { color: var(--muted); font-size: 12px; margin-top: 5px; }
-    input[type="text"], input[type="number"], input[type="datetime-local"], select, textarea {
+    input[type="text"], input[type="number"], input[type="time"], input[type="datetime-local"], select, textarea {
       width: 100%; min-height: 40px; padding: 8px 10px; color: var(--ink); background: #fff; border: 1px solid #bfc8d2;
     }
     textarea { min-height: 86px; resize: vertical; font-family: Consolas, monospace; }
@@ -105,6 +105,9 @@
     .day input:checked + span { color: #fff; background: var(--blue); border-color: var(--blue); }
     .day input:focus-visible + span { outline: 3px solid rgba(23,105,170,.3); outline-offset: 2px; }
     .unit-input { display: grid; grid-template-columns: 1fr 120px; gap: 8px; }
+    .time-list { margin: 0 0 10px; padding-left: 24px; }
+    .time-list li { padding: 0 0 8px; }
+    .time-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
     .token-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .token-row button { min-height: 29px; padding: 3px 8px; font: 12px Consolas, monospace; }
     .preview { margin-top: 9px; padding: 9px 11px; color: #27384a; background: #edf3f7; border-left: 3px solid var(--blue); font: 13px Consolas, monospace; overflow-wrap: anywhere; }
@@ -205,7 +208,7 @@
           type: 'interval', intervalSeconds: 60, weekdays: DAYS.slice(), activeHoursEnabled: false,
           activeStart: '09:00:00', activeEnd: '17:00:00', times: ['09:00:00']
         },
-        stopCondition: { mode: 'none', endAtLocal: null, durationSeconds: null }
+        stopCondition: { mode: 'none', endAtLocal: null, durationSeconds: null, captureCount: null }
       };
     }
 
@@ -252,7 +255,7 @@
       nav.innerHTML = `<button class="nav-item ${selected === 'application' ? 'active' : ''}" data-select="application" type="button">
         <span class="status-dot ${config.paused ? '' : 'on'}"></span><span>Application</span><span class="nav-meta">LOG</span></button>` +
         config.tasks.map(task => `<button class="nav-item ${selected === task.id ? 'active' : ''}" data-select="${escapeHtml(task.id)}" type="button">
-          <span class="status-dot ${task.enabled ? 'on' : ''}"></span><span>${escapeHtml(task.name)}</span><span class="nav-meta">${task.schedule.type === 'fixed' ? 'FIX' : formatSeconds(task.schedule.intervalSeconds)}</span></button>`).join('');
+          <span class="status-dot ${task.enabled ? 'on' : ''}"></span><span>${escapeHtml(task.name)}</span><span class="nav-meta">${task.schedule.type === 'fixedOnce' ? 'ONCE' : task.schedule.type === 'fixed' ? 'FIX' : formatSeconds(task.schedule.intervalSeconds)}</span></button>`).join('');
     }
 
     function renderPanel() {
@@ -301,14 +304,16 @@
           <div class="field"><span class="label">State</span><label class="check-row"><input type="checkbox" data-task="enabled" ${task.enabled ? 'checked' : ''}> Enabled</label></div>
         </div></div>
         <div class="section"><h3>Schedule</h3><div class="grid">
-          ${selectField('Schedule type','task-schedule-type',schedule.type,[['interval','Recurring interval'],['fixed','Fixed local times']])}
-          ${schedule.type === 'interval' ? `<div class="field"><label for="intervalValue">Interval</label><div class="unit-input"><input id="intervalValue" type="number" min="0.0003" step="any" value="${intervalValue}" data-role="intervalValue"><select data-role="intervalUnit">${unitOptions(intervalUnit)}</select></div><div class="hint">Stored as 1–86,400 seconds.</div></div>` : textField('Times','task-schedule-times',schedule.times.join(', '),'','Comma-separated HH:mm:ss values.')}
+          ${selectField('Schedule type','task-schedule-type',schedule.type,[['interval','Recurring interval'],['fixed','Fixed local times'],['fixedOnce','Fixed local times — run once']])}
+          ${schedule.type === 'interval' ? `<div class="field"><label for="intervalValue">Interval</label><div class="unit-input"><input id="intervalValue" type="number" min="0.0003" step="any" value="${intervalValue}" data-role="intervalValue"><select data-role="intervalUnit">${unitOptions(intervalUnit)}</select></div><div class="hint">Stored as 1–86,400 seconds.</div></div>` : timeFields(task)}
           <div class="field wide"><span class="label">Weekdays</span><div class="days">${dayFields(task)}</div></div>
+          ${schedule.type === 'fixedOnce' ? '<div class="hint wide">Runs each listed clock time once on its next selected weekday, then disables this task. Times already passed run on the next eligible day. Re-enable to run the list again.</div>' : ''}
           ${schedule.type === 'interval' ? `<div class="field wide"><label class="check-row"><input type="checkbox" data-task="activeHoursEnabled" ${schedule.activeHoursEnabled ? 'checked' : ''}> Restrict to active hours</label></div>
             ${schedule.activeHoursEnabled ? textField('Active start','task-schedule-activeStart',schedule.activeStart,'','HH:mm:ss') + textField('Active end','task-schedule-activeEnd',schedule.activeEnd,'','HH:mm:ss; must be later on the same day.') : ''}` : ''}
         </div></div>
         <div class="section"><h3>End condition</h3><div class="grid">
-          ${selectField('Stop mode','task-stop-mode',stop.mode,[['none','Continue until disabled'],['at','Exact local date and time'],['duration','After a duration']])}
+          ${selectField('Stop mode','task-stop-mode',stop.mode,[['none','Continue until disabled'],['at','Exact local date and time'],['duration','After a duration'],['count','After a number of captures']])}
+          ${stop.mode === 'count' ? numberField('Number of captures','task-stop-captureCount',stop.captureCount,1,2147483647) + '<div class="hint wide">Counts successful scheduled executions across all selected times. Progress survives restarts. Re-enable the task to start a new count.</div>' : ''}
           ${stop.mode === 'at' ? `<div class="field"><label for="endAt">End at</label><input id="endAt" type="datetime-local" step="1" value="${escapeHtml(stop.endAtLocal || '')}" data-task="endAtLocal"></div>` : ''}
           ${stop.mode === 'duration' ? `<div class="field"><label for="durationValue">Duration</label><div class="unit-input"><input id="durationValue" type="number" min="0.0003" step="any" value="${durationValue}" data-role="durationValue"><select data-role="durationUnit">${unitOptions(durationUnit)}</select></div><div class="hint">Stored as 1 second through 365 days.</div></div>` : ''}
         </div></div>
@@ -337,12 +342,25 @@
     function dayFields(task) {
       return DAYS.map(day => `<label class="day"><input type="checkbox" data-day="${day}" ${task.schedule.weekdays.includes(day) ? 'checked' : ''}><span>${day}</span></label>`).join('');
     }
+    function timeFields(task) {
+      return `<div class="field"><span class="label" id="executionTimesLabel">Execution times</span>
+        <ol class="time-list" aria-labelledby="executionTimesLabel">${task.schedule.times.map((time,index) => `<li><div class="time-entry">
+          <input type="time" step="1" value="${escapeHtml(time)}" data-time-index="${index}" aria-label="Execution time ${index + 1}">
+          <button type="button" data-time-action="remove" data-time-index="${index}" aria-label="Remove time ${index + 1}">Remove</button>
+        </div></li>`).join('')}</ol>
+        <button type="button" data-time-action="add">Add time</button>
+        <div class="hint">One local clock time per row, including seconds.</div></div>`;
+    }
     function unitOptions(selectedUnit) {
       return Object.keys(FACTORS).map(unit => `<option value="${unit}" ${unit === selectedUnit ? 'selected' : ''}>${unit}</option>`).join('');
     }
 
     function handleBoundInput(target) {
       const task = config.tasks.find(item => item.id === selected);
+      if (task && target.matches('input[data-time-index]')) {
+        task.schedule.times[Number(target.dataset.timeIndex)] = target.value.length === 5 ? target.value + ':00' : target.value;
+        return;
+      }
       const id = target.dataset.bind;
       if (id) {
         const mappings = {
@@ -352,8 +370,11 @@
           'app-logging-retainedFiles': () => config.logging.retainedFiles = Number(target.value),
           'task-name': () => task.name = target.value,
           'task-schedule-type': () => task.schedule.type = target.value,
-          'task-stop-mode': () => task.stopCondition.mode = target.value,
-          'task-schedule-times': () => task.schedule.times = target.value.split(/[\n,]+/).map(v => v.trim()).filter(Boolean),
+          'task-stop-mode': () => {
+            task.stopCondition.mode = target.value;
+            if (target.value === 'count' && task.stopCondition.captureCount == null) task.stopCondition.captureCount = 10;
+          },
+          'task-stop-captureCount': () => task.stopCondition.captureCount = Number(target.value),
           'task-schedule-activeStart': () => task.schedule.activeStart = target.value,
           'task-schedule-activeEnd': () => task.schedule.activeEnd = target.value,
           'task-capture-imageFormat': () => task.capture.imageFormat = target.value,
@@ -416,10 +437,12 @@
         if (names.has(normalizedName)) errors.push(`${prefix} has a duplicate name.`); names.add(normalizedName);
         if (!task.schedule.weekdays.length) errors.push(`${prefix} needs at least one weekday.`);
         if (task.schedule.type === 'interval' && (task.schedule.intervalSeconds < 1 || task.schedule.intervalSeconds > 86400)) errors.push(`${prefix} interval must be 1–86,400 seconds.`);
-        if (task.schedule.type === 'fixed' && (!task.schedule.times.length || task.schedule.times.some(t => !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(t)))) errors.push(`${prefix} fixed times must use HH:mm:ss.`);
+        if (['fixed','fixedOnce'].includes(task.schedule.type) && (!task.schedule.times.length || task.schedule.times.some(t => !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(t)))) errors.push(`${prefix} fixed times must use HH:mm:ss.`);
+        if (['fixed','fixedOnce'].includes(task.schedule.type) && new Set(task.schedule.times).size !== task.schedule.times.length) errors.push(`${prefix} fixed times must be unique.`);
         if (task.schedule.activeHoursEnabled && (!validClock(task.schedule.activeStart) || !validClock(task.schedule.activeEnd) || task.schedule.activeStart >= task.schedule.activeEnd)) errors.push(`${prefix} active hours must be same-day and start before end.`);
         if (task.stopCondition.mode === 'at' && (!task.stopCondition.endAtLocal || (task.enabled && new Date(task.stopCondition.endAtLocal) <= new Date()))) errors.push(`${prefix} needs a future exact end time.`);
         if (task.stopCondition.mode === 'duration' && (task.stopCondition.durationSeconds < 1 || task.stopCondition.durationSeconds > 31536000)) errors.push(`${prefix} duration must be 1 second through 365 days.`);
+        if (task.stopCondition.mode === 'count' && (!Number.isInteger(task.stopCondition.captureCount) || task.stopCondition.captureCount < 1 || task.stopCondition.captureCount > 2147483647)) errors.push(`${prefix} capture count must be a whole number from 1 through 2,147,483,647.`);
         if (!['jpeg','png'].includes(task.capture.imageFormat)) errors.push(`${prefix} image format is invalid.`);
         if (task.capture.jpegQuality < 50 || task.capture.jpegQuality > 100) errors.push(`${prefix} JPEG quality must be 50–100.`);
         const template = task.capture.fileNameTemplate || '';
@@ -513,6 +536,16 @@
     document.getElementById('addTask').addEventListener('click', () => { const task = newTask(uniqueName('New task')); config.tasks.push(task); selected = task.id; render(); });
     document.addEventListener('click', event => {
       const select = event.target.closest('[data-select]'); if (select) { selected = select.dataset.select; render(); return; }
+      const timeAction = event.target.closest('[data-time-action]');
+      if (timeAction) {
+        const task = config.tasks.find(item => item.id === selected); if (!task) return;
+        const index = timeAction.dataset.timeAction === 'add' ? task.schedule.times.length : Number(timeAction.dataset.timeIndex);
+        if (timeAction.dataset.timeAction === 'add') task.schedule.times.push('');
+        else task.schedule.times.splice(index, 1);
+        renderPanel();
+        (document.querySelector(`input[data-time-index="${Math.min(index, task.schedule.times.length - 1)}"]`) || document.querySelector('[data-time-action="add"]'))?.focus();
+        return;
+      }
       const action = event.target.closest('[data-action]'); if (action) { taskAction(action.dataset.action); return; }
       const token = event.target.closest('[data-token]'); if (token) {
         const task = config.tasks.find(item => item.id === selected); if (!task) return;

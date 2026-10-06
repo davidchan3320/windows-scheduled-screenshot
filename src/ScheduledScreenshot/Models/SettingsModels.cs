@@ -57,6 +57,7 @@ namespace ScheduledScreenshot.Models
         public string mode { get; set; } = "none";
         public string endAtLocal { get; set; }
         public int? durationSeconds { get; set; }
+        public int? captureCount { get; set; }
     }
 
     public sealed class ValidationResult
@@ -79,6 +80,9 @@ namespace ScheduledScreenshot.Models
         public string durationDeadlineUtc { get; set; }
         public string durationSignature { get; set; }
         public string lastFixedOccurrence { get; set; }
+        public List<string> completedFixedTimes { get; set; } = new List<string>();
+        public int completedCaptures { get; set; }
+        public string countSignature { get; set; }
     }
 
     public sealed class TaskOccurrence
@@ -86,5 +90,9 @@ namespace ScheduledScreenshot.Models
         public ScreenshotTaskSettings Task { get; set; }
         public DateTimeOffset DueUtc { get; set; }
         public string FixedOccurrenceKey { get; set; }
+        public string FixedTimeSlot { get; set; }
+        public string ScheduleSignature { get; set; }
+        public string RuntimeAnchorUtc { get; set; }
+        public string CountSignature { get; set; }
     }
 }

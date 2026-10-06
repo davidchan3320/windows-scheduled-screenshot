@@ -215,9 +215,9 @@ namespace ScheduledScreenshot.Services
                 result.Errors.Add(prefix + ".schedule is required.");
                 return;
             }
-            if (schedule.type != "interval" && schedule.type != "fixed")
+            if (schedule.type != "interval" && schedule.type != "fixed" && schedule.type != "fixedOnce")
             {
-                result.Errors.Add(prefix + ".schedule.type must be interval or fixed.");
+                result.Errors.Add(prefix + ".schedule.type must be interval, fixed, or fixedOnce.");
             }
             if (schedule.weekdays == null || schedule.weekdays.Count == 0 || schedule.weekdays.Any(day => !ValidDays.Contains(day))
                 || schedule.weekdays.Distinct(StringComparer.Ordinal).Count() != schedule.weekdays.Count)
@@ -239,7 +239,7 @@ namespace ScheduledScreenshot.Services
                     }
                 }
             }
-            else if (schedule.type == "fixed")
+            else if (schedule.type == "fixed" || schedule.type == "fixedOnce")
             {
                 if (schedule.times == null || schedule.times.Count == 0)
                 {
@@ -266,9 +266,9 @@ namespace ScheduledScreenshot.Services
                 result.Errors.Add(prefix + ".stopCondition is required.");
                 return;
             }
-            if (stop.mode != "none" && stop.mode != "at" && stop.mode != "duration")
+            if (stop.mode != "none" && stop.mode != "at" && stop.mode != "duration" && stop.mode != "count")
             {
-                result.Errors.Add(prefix + ".stopCondition.mode must be none, at, or duration.");
+                result.Errors.Add(prefix + ".stopCondition.mode must be none, at, duration, or count.");
             }
             if (stop.mode == "at")
             {
@@ -282,6 +282,10 @@ namespace ScheduledScreenshot.Services
             if (stop.mode == "duration" && (!stop.durationSeconds.HasValue || stop.durationSeconds < 1 || stop.durationSeconds > 31536000))
             {
                 result.Errors.Add(prefix + ".stopCondition.durationSeconds must be between 1 and 31536000.");
+            }
+            if (stop.mode == "count" && (!stop.captureCount.HasValue || stop.captureCount.Value < 1))
+            {
+                result.Errors.Add(prefix + ".stopCondition.captureCount must be between 1 and 2147483647.");
             }
         }
 

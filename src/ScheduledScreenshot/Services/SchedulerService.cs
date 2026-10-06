@@ -142,10 +142,21 @@ namespace ScheduledScreenshot.Services
                     state.scheduleSignature = scheduleSignature;
                     state.intervalAnchorUtc = nowUtc.ToString("o", CultureInfo.InvariantCulture);
                     state.lastFixedOccurrence = null;
+                    state.completedFixedTimes = new List<string>();
+                    changed = true;
+                }
+                else if (state.completedFixedTimes == null)
+                {
+                    state.completedFixedTimes = new List<string>();
                     changed = true;
                 }
 
-                var durationSignature = JsonUtility.Signature(task.stopCondition);
+                var durationSignature = JsonUtility.Signature(new
+                {
+                    task.stopCondition.mode,
+                    task.stopCondition.endAtLocal,
+                    task.stopCondition.durationSeconds
+                });
                 if (task.stopCondition.mode == "duration")
                 {
                     if (state.durationSignature != durationSignature
@@ -161,6 +172,27 @@ namespace ScheduledScreenshot.Services
                 {
                     state.durationSignature = durationSignature;
                     state.durationDeadlineUtc = null;
+                    changed = true;
+                }
+
+                var countSignature = ScheduleCalculator.GetCountSignature(task);
+                if (countSignature != null)
+                {
+                    if (!string.Equals(state.countSignature, countSignature, StringComparison.Ordinal))
+                    {
+                        state.countSignature = countSignature;
+                        state.completedCaptures = 0;
+                        changed = true;
+                    }
+                    else if (state.completedCaptures < 0)
+                    {
+                        state.completedCaptures = 0;
+                        changed = true;
+                    }
+                }
+                else if (state.countSignature != null)
+                {
+                    state.countSignature = null;
                     changed = true;
                 }
             }
@@ -191,6 +223,15 @@ namespace ScheduledScreenshot.Services
             {
                 if (!_state.tasks.TryGetValue(task.id, out var state))
                 {
+                    continue;
+                }
+                if (ScheduleCalculator.IsCountExhausted(task, state)
+                    || ScheduleCalculator.IsFixedOnceExhausted(task, state))
+                {
+                    if (!_nextDeadline.HasValue || nowUtc < _nextDeadline)
+                    {
+                        _nextDeadline = nowUtc;
+                    }
                     continue;
                 }
                 var deadline = ScheduleCalculator.GetStopUtc(task, state);
@@ -260,6 +301,8 @@ namespace ScheduledScreenshot.Services
         private void ProcessTimer()
         {
             List<ScreenshotTaskSettings> expiredTasks;
+            HashSet<string> exhaustedFixedOnceIds;
+            Dictionary<string, string> expiredRuntimeAnchors;
             List<TaskOccurrence> due;
             var nowUtc = DateTimeOffset.UtcNow;
             lock (_sync)
@@ -268,9 +311,17 @@ namespace ScheduledScreenshot.Services
                 _timer.Change(Timeout.Infinite, Timeout.Infinite);
                 expiredTasks = _settings.tasks.Where(task => task.enabled
                     && _state.tasks.TryGetValue(task.id, out var runtime)
-                    && ScheduleCalculator.GetStopUtc(task, runtime).HasValue
-                    && ScheduleCalculator.GetStopUtc(task, runtime).Value <= nowUtc)
+                    && ScheduleCalculator.HasReachedEndCondition(task, runtime, nowUtc))
                     .ToList();
+                exhaustedFixedOnceIds = new HashSet<string>(
+                    expiredTasks.Where(task => _state.tasks.TryGetValue(task.id, out var runtime)
+                        && ScheduleCalculator.IsFixedOnceExhausted(task, runtime))
+                        .Select(task => task.id),
+                    StringComparer.OrdinalIgnoreCase);
+                expiredRuntimeAnchors = expiredTasks.ToDictionary(
+                    task => task.id,
+                    task => _state.tasks[task.id].intervalAnchorUtc,
+                    StringComparer.OrdinalIgnoreCase);
 
                 var expiredIds = new HashSet<string>(expiredTasks.Select(task => task.id), StringComparer.OrdinalIgnoreCase);
                 due = new List<TaskOccurrence>();
@@ -290,14 +341,52 @@ namespace ScheduledScreenshot.Services
 
             foreach (var task in expiredTasks)
             {
-                _logger.Info("TASK_ENDED", "A task reached its configured end condition.", LogContext.ForTask(task), true);
-                _configuration.DisableTask(task.id);
+                var scheduleSignature = JsonUtility.Signature(task.schedule);
+                bool disabled;
+                if (exhaustedFixedOnceIds.Contains(task.id))
+                {
+                    disabled = DisableFixedOnceTaskIfMatching(task.id, scheduleSignature,
+                        expiredRuntimeAnchors[task.id]);
+                }
+                else if (task.stopCondition.mode == "count")
+                {
+                    disabled = DisableCountTaskIfMatching(task.id, scheduleSignature,
+                        ScheduleCalculator.GetCountSignature(task), expiredRuntimeAnchors[task.id]);
+                }
+                else
+                {
+                    disabled = _configuration.DisableTask(task.id);
+                }
+                if (disabled)
+                {
+                    _logger.Info("TASK_ENDED", "A task reached its configured end condition.", LogContext.ForTask(task), true);
+                }
             }
 
             if (due.Count > 0)
             {
                 var captureResult = _capture.TryCapture(due.Select(item => item.Task).ToList(), "scheduled");
-                UpdateOccurrenceState(due);
+                List<TaskOccurrence> completedFixedOnceOccurrences;
+                var completedCountOccurrences = UpdateOccurrenceState(
+                    due, captureResult, out completedFixedOnceOccurrences);
+                foreach (var occurrence in completedCountOccurrences)
+                {
+                    if (DisableCountTaskIfMatching(occurrence.Task.id, occurrence.ScheduleSignature,
+                        occurrence.CountSignature, occurrence.RuntimeAnchorUtc))
+                    {
+                        _logger.Info("TASK_ENDED", "A task reached its configured end condition.",
+                            LogContext.ForTask(occurrence.Task), true);
+                    }
+                }
+                foreach (var occurrence in completedFixedOnceOccurrences)
+                {
+                    if (DisableFixedOnceTaskIfMatching(occurrence.Task.id, occurrence.ScheduleSignature,
+                        occurrence.RuntimeAnchorUtc))
+                    {
+                        _logger.Info("TASK_ENDED", "A task reached its configured end condition.",
+                            LogContext.ForTask(occurrence.Task), true);
+                    }
+                }
                 if (captureResult.Skipped)
                 {
                     foreach (var occurrence in due)
@@ -309,23 +398,180 @@ namespace ScheduledScreenshot.Services
             }
         }
 
-        private void UpdateOccurrenceState(IEnumerable<TaskOccurrence> occurrences)
+        private List<TaskOccurrence> UpdateOccurrenceState(
+            IEnumerable<TaskOccurrence> occurrences,
+            CaptureBatchResult captureResult,
+            out List<TaskOccurrence> completedFixedOnceOccurrences)
         {
             var changed = false;
+            var completedCountOccurrences = new List<TaskOccurrence>();
+            completedFixedOnceOccurrences = new List<TaskOccurrence>();
+            var successfulTaskIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (captureResult != null)
+            {
+                successfulTaskIds.UnionWith(captureResult.SuccessfulTaskIds);
+            }
+            var countedTaskIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var executedBatch = captureResult != null && !captureResult.Skipped;
             lock (_sync)
             {
-                foreach (var occurrence in occurrences.Where(item => item.FixedOccurrenceKey != null))
+                _settings = _configuration.Current;
+                ReconcileStateLocked(DateTimeOffset.UtcNow);
+
+                foreach (var occurrence in occurrences)
                 {
-                    if (_state.tasks.TryGetValue(occurrence.Task.id, out var state))
+                    if (!_state.tasks.TryGetValue(occurrence.Task.id, out var state))
+                    {
+                        continue;
+                    }
+
+                    var currentTask = _settings.tasks.FirstOrDefault(item => item.enabled
+                        && string.Equals(item.id, occurrence.Task.id, StringComparison.OrdinalIgnoreCase));
+                    var runtimeStillMatches = string.Equals(state.intervalAnchorUtc,
+                                                  occurrence.RuntimeAnchorUtc, StringComparison.Ordinal)
+                        && string.Equals(state.scheduleSignature, occurrence.ScheduleSignature, StringComparison.Ordinal)
+                        && currentTask != null;
+                    var scheduleStillMatches = runtimeStillMatches
+                        && string.Equals(JsonUtility.Signature(currentTask.schedule),
+                            occurrence.ScheduleSignature, StringComparison.Ordinal);
+
+                    if (occurrence.FixedOccurrenceKey != null && scheduleStillMatches)
                     {
                         state.lastFixedOccurrence = occurrence.FixedOccurrenceKey;
                         changed = true;
+                    }
+
+                    if (executedBatch
+                        && occurrence.FixedTimeSlot != null
+                        && scheduleStillMatches
+                        && currentTask.schedule.type == "fixedOnce"
+                        && !state.completedFixedTimes.Contains(occurrence.FixedTimeSlot, StringComparer.Ordinal))
+                    {
+                        state.completedFixedTimes.Add(occurrence.FixedTimeSlot);
+                        changed = true;
+                        if (ScheduleCalculator.IsFixedOnceExhausted(currentTask, state))
+                        {
+                            completedFixedOnceOccurrences.Add(occurrence);
+                        }
+                    }
+
+                    if (occurrence.CountSignature == null
+                        || !successfulTaskIds.Contains(occurrence.Task.id)
+                        || !countedTaskIds.Add(occurrence.Task.id)
+                        || !string.Equals(state.countSignature, occurrence.CountSignature, StringComparison.Ordinal)
+                        || !string.Equals(state.scheduleSignature, occurrence.ScheduleSignature, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (!scheduleStillMatches
+                        || !string.Equals(ScheduleCalculator.GetCountSignature(currentTask),
+                            occurrence.CountSignature, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (state.completedCaptures < currentTask.stopCondition.captureCount.Value)
+                    {
+                        state.completedCaptures++;
+                        changed = true;
+                    }
+                    if (state.completedCaptures >= currentTask.stopCondition.captureCount.Value)
+                    {
+                        completedCountOccurrences.Add(occurrence);
                     }
                 }
                 if (changed)
                 {
                     PersistStateLocked();
                 }
+            }
+            return completedCountOccurrences;
+        }
+
+        private bool DisableFixedOnceTaskIfMatching(
+            string taskId,
+            string scheduleSignature,
+            string runtimeAnchorUtc)
+        {
+            if (scheduleSignature == null || runtimeAnchorUtc == null)
+            {
+                return false;
+            }
+            lock (_sync)
+            {
+                _settings = _configuration.Current;
+                ReconcileStateLocked(DateTimeOffset.UtcNow);
+                if (!_state.tasks.TryGetValue(taskId, out var runtime)
+                    || !string.Equals(runtime.intervalAnchorUtc, runtimeAnchorUtc, StringComparison.Ordinal)
+                    || !string.Equals(runtime.scheduleSignature, scheduleSignature, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+                var currentTask = _settings.tasks.FirstOrDefault(item => item.enabled
+                    && string.Equals(item.id, taskId, StringComparison.OrdinalIgnoreCase));
+                if (currentTask == null || !ScheduleCalculator.IsFixedOnceExhausted(currentTask, runtime))
+                {
+                    return false;
+                }
+                return _configuration.Update(settings =>
+                {
+                    var task = settings.tasks.FirstOrDefault(item => item.enabled
+                        && string.Equals(item.id, taskId, StringComparison.OrdinalIgnoreCase));
+                    if (task?.schedule?.type != "fixedOnce"
+                        || !string.Equals(JsonUtility.Signature(task.schedule),
+                            scheduleSignature, StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                    task.enabled = false;
+                    return true;
+                });
+            }
+        }
+
+        private bool DisableCountTaskIfMatching(
+            string taskId,
+            string scheduleSignature,
+            string countSignature,
+            string runtimeAnchorUtc)
+        {
+            if (scheduleSignature == null || countSignature == null || runtimeAnchorUtc == null)
+            {
+                return false;
+            }
+            lock (_sync)
+            {
+                _settings = _configuration.Current;
+                ReconcileStateLocked(DateTimeOffset.UtcNow);
+                if (!_state.tasks.TryGetValue(taskId, out var runtime)
+                    || !string.Equals(runtime.intervalAnchorUtc, runtimeAnchorUtc, StringComparison.Ordinal)
+                    || !string.Equals(runtime.scheduleSignature, scheduleSignature, StringComparison.Ordinal)
+                    || !string.Equals(runtime.countSignature, countSignature, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+                var currentTask = _settings.tasks.FirstOrDefault(item => item.enabled
+                    && string.Equals(item.id, taskId, StringComparison.OrdinalIgnoreCase));
+                if (currentTask == null || !ScheduleCalculator.IsCountExhausted(currentTask, runtime))
+                {
+                    return false;
+                }
+                return _configuration.Update(settings =>
+                {
+                    var task = settings.tasks.FirstOrDefault(item => item.enabled
+                        && string.Equals(item.id, taskId, StringComparison.OrdinalIgnoreCase));
+                    if (task == null
+                        || !string.Equals(JsonUtility.Signature(task.schedule),
+                            scheduleSignature, StringComparison.Ordinal)
+                        || !string.Equals(ScheduleCalculator.GetCountSignature(task),
+                            countSignature, StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+                    task.enabled = false;
+                    return true;
+                });
             }
         }
 

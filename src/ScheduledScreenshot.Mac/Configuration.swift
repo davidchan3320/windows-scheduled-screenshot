@@ -142,11 +142,13 @@ struct StopConditionSettings: Codable, Equatable {
     var mode: String
     var endAtLocal: String?
     var durationSeconds: Int?
+    var captureCount: Int?
 
-    init(mode: String = "none", endAtLocal: String? = nil, durationSeconds: Int? = nil) {
+    init(mode: String = "none", endAtLocal: String? = nil, durationSeconds: Int? = nil, captureCount: Int? = nil) {
         self.mode = mode
         self.endAtLocal = endAtLocal
         self.durationSeconds = durationSeconds
+        self.captureCount = captureCount
     }
 
     init(from decoder: Decoder) throws {
@@ -154,6 +156,7 @@ struct StopConditionSettings: Codable, Equatable {
         mode = try values.decodeIfPresent(String.self, forKey: .mode) ?? "none"
         endAtLocal = try values.decodeIfPresent(String.self, forKey: .endAtLocal)
         durationSeconds = try values.decodeIfPresent(Int.self, forKey: .durationSeconds)
+        captureCount = try values.decodeIfPresent(Int.self, forKey: .captureCount)
     }
 }
 
@@ -310,8 +313,8 @@ enum SettingsValidator {
 
     private static func validateSchedule(_ schedule: ScheduleSettings, prefix: String,
                                          result: inout ValidationResult) {
-        if !["interval", "fixed"].contains(schedule.type) {
-            result.errors.append("\(prefix).schedule.type must be interval or fixed.")
+        if !["interval", "fixed", "fixedOnce"].contains(schedule.type) {
+            result.errors.append("\(prefix).schedule.type must be interval, fixed, or fixedOnce.")
         }
         if schedule.weekdays.isEmpty || schedule.weekdays.contains(where: { !validDays.contains($0) })
             || Set(schedule.weekdays).count != schedule.weekdays.count {
@@ -328,7 +331,7 @@ enum SettingsValidator {
                     return
                 }
             }
-        } else if schedule.type == "fixed" {
+        } else if ["fixed", "fixedOnce"].contains(schedule.type) {
             if schedule.times.isEmpty {
                 result.errors.append("\(prefix).schedule.times must contain at least one time.")
             } else {
@@ -344,8 +347,8 @@ enum SettingsValidator {
 
     private static func validateStop(_ stop: StopConditionSettings, prefix: String, enabled: Bool,
                                      result: inout ValidationResult) {
-        if !["none", "at", "duration"].contains(stop.mode) {
-            result.errors.append("\(prefix).stopCondition.mode must be none, at, or duration.")
+        if !["none", "at", "duration", "count"].contains(stop.mode) {
+            result.errors.append("\(prefix).stopCondition.mode must be none, at, duration, or count.")
         }
         if stop.mode == "at" {
             guard let end = parseLocalDateTime(stop.endAtLocal), !enabled || end > Date() else {
@@ -355,6 +358,9 @@ enum SettingsValidator {
         }
         if stop.mode == "duration", !(1...31_536_000).contains(stop.durationSeconds ?? 0) {
             result.errors.append("\(prefix).stopCondition.durationSeconds must be between 1 and 31536000.")
+        }
+        if stop.mode == "count", !(1...2_147_483_647).contains(stop.captureCount ?? 0) {
+            result.errors.append("\(prefix).stopCondition.captureCount must be between 1 and 2147483647.")
         }
     }
 
@@ -702,6 +708,22 @@ final class Configuration {
             var changed = false
             for index in settings.tasks.indices
                 where targets.contains(settings.tasks[index].id.lowercased()) && settings.tasks[index].enabled {
+                settings.tasks[index].enabled = false
+                changed = true
+            }
+            return changed
+        }
+    }
+
+    @discardableResult
+    func disable(tasksIfUnchanged tasks: [ScreenshotTask]) -> Bool {
+        let expected = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id.lowercased(), $0) })
+        return update { settings in
+            var changed = false
+            for index in settings.tasks.indices {
+                let task = settings.tasks[index]
+                guard task.enabled, let previous = expected[task.id.lowercased()],
+                      task.schedule == previous.schedule, task.stopCondition == previous.stopCondition else { continue }
                 settings.tasks[index].enabled = false
                 changed = true
             }

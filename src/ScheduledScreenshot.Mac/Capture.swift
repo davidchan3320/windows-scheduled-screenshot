@@ -6,6 +6,12 @@ import ImageIO
 @preconcurrency import ScreenCaptureKit
 import UniformTypeIdentifiers
 
+struct CaptureBatchResult {
+    var files: [URL] = []
+    var successfulTaskIDs: [String] = []
+    var skipped = false
+}
+
 @available(macOS 14.0, *)
 @MainActor
 final class CaptureCoordinator {
@@ -21,8 +27,8 @@ final class CaptureCoordinator {
         self.logger = logger
     }
 
-    func capture(_ tasks: [ScreenshotTask], reason: String) async -> [URL] {
-        guard !tasks.isEmpty else { return [] }
+    func capture(_ tasks: [ScreenshotTask], reason: String) async -> CaptureBatchResult {
+        guard !tasks.isEmpty else { return CaptureBatchResult() }
 
         guard !isBusy else {
             for task in tasks {
@@ -32,7 +38,7 @@ final class CaptureCoordinator {
                     context: .forTask(task)
                 )
             }
-            return []
+            return CaptureBatchResult(skipped: true)
         }
 
         isBusy = true
@@ -42,6 +48,7 @@ final class CaptureCoordinator {
         let started = ContinuousClock.now
         let timestamp = Date()
         var files: [URL] = []
+        var successfulTaskIDs: [String] = []
 
         logger.info(
             "BATCH_START",
@@ -60,7 +67,7 @@ final class CaptureCoordinator {
                 context: LogContext(batchId: batchID)
             )
             logBatchComplete(batchID: batchID, started: started, filesWritten: 0)
-            return []
+            return CaptureBatchResult()
         }
 
         guard isSessionAvailable() else {
@@ -70,7 +77,7 @@ final class CaptureCoordinator {
                 context: LogContext(batchId: batchID)
             )
             logBatchComplete(batchID: batchID, started: started, filesWritten: 0)
-            return []
+            return CaptureBatchResult()
         }
 
         let content: SCShareableContent
@@ -85,7 +92,7 @@ final class CaptureCoordinator {
                 context: LogContext(batchId: batchID)
             )
             logBatchComplete(batchID: batchID, started: started, filesWritten: 0)
-            return []
+            return CaptureBatchResult()
         }
 
         guard isSessionAvailable() else {
@@ -95,7 +102,7 @@ final class CaptureCoordinator {
                 context: LogContext(batchId: batchID)
             )
             logBatchComplete(batchID: batchID, started: started, filesWritten: 0)
-            return []
+            return CaptureBatchResult()
         }
 
         let displays = content.displays.sorted {
@@ -112,7 +119,7 @@ final class CaptureCoordinator {
                 context: LogContext(batchId: batchID)
             )
             logBatchComplete(batchID: batchID, started: started, filesWritten: 0)
-            return []
+            return CaptureBatchResult()
         }
 
         let profileGroups: [[ScreenshotTask]]
@@ -127,7 +134,7 @@ final class CaptureCoordinator {
                 context: LogContext(batchId: batchID)
             )
             logBatchComplete(batchID: batchID, started: started, filesWritten: 0)
-            return []
+            return CaptureBatchResult()
         }
 
         for group in profileGroups {
@@ -200,11 +207,12 @@ final class CaptureCoordinator {
                 )
             } else {
                 files.append(contentsOf: profileFiles)
+                successfulTaskIDs.append(contentsOf: group.map(\.id))
             }
         }
 
         logBatchComplete(batchID: batchID, started: started, filesWritten: files.count)
-        return files
+        return CaptureBatchResult(files: files, successfulTaskIDs: successfulTaskIDs)
     }
 
     private func capture(display: SCDisplay, settings: CaptureSettings) async throws -> CGImage {

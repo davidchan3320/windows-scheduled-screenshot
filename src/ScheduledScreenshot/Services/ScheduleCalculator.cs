@@ -17,10 +17,14 @@ namespace ScheduledScreenshot.Services
             {
                 return null;
             }
+            if (IsCountExhausted(task, state) || IsFixedOnceExhausted(task, state))
+            {
+                return null;
+            }
 
             var stopUtc = GetStopUtc(task, state);
             TaskOccurrence occurrence;
-            if (task.schedule.type == "fixed")
+            if (task.schedule.type == "fixed" || task.schedule.type == "fixedOnce")
             {
                 occurrence = GetNextFixed(task, state, nowUtc);
             }
@@ -33,7 +37,54 @@ namespace ScheduledScreenshot.Services
             {
                 return null;
             }
+            if (occurrence != null)
+            {
+                occurrence.ScheduleSignature = state.scheduleSignature;
+                occurrence.RuntimeAnchorUtc = state.intervalAnchorUtc;
+                occurrence.CountSignature = GetCountSignature(task);
+            }
             return occurrence;
+        }
+
+        public static string GetCountSignature(ScreenshotTaskSettings task)
+        {
+            if (task?.stopCondition?.mode != "count" || !task.stopCondition.captureCount.HasValue)
+            {
+                return null;
+            }
+            return "count:" + task.stopCondition.captureCount.Value.ToString(CultureInfo.InvariantCulture);
+        }
+
+        public static bool IsCountExhausted(ScreenshotTaskSettings task, TaskRuntimeState state)
+        {
+            var signature = GetCountSignature(task);
+            return signature != null
+                   && state != null
+                   && string.Equals(state.countSignature, signature, StringComparison.Ordinal)
+                   && state.completedCaptures >= task.stopCondition.captureCount.Value;
+        }
+
+        public static bool IsFixedOnceExhausted(ScreenshotTaskSettings task, TaskRuntimeState state)
+        {
+            if (task?.schedule?.type != "fixedOnce" || task.schedule.times == null || state == null)
+            {
+                return false;
+            }
+            var completedTimes = state.completedFixedTimes ?? new List<string>();
+            return task.schedule.times.All(time => completedTimes.Contains(time, StringComparer.Ordinal));
+        }
+
+        public static bool HasReachedEndCondition(
+            ScreenshotTaskSettings task,
+            TaskRuntimeState state,
+            DateTimeOffset nowUtc)
+        {
+            if (IsCountExhausted(task, state) || IsFixedOnceExhausted(task, state))
+            {
+                return true;
+            }
+            var stopUtc = GetStopUtc(task, state);
+            return stopUtc.HasValue && stopUtc.Value <= nowUtc;
         }
 
         public static DateTimeOffset? GetStopUtc(ScreenshotTaskSettings task, TaskRuntimeState state)
@@ -136,6 +187,9 @@ namespace ScheduledScreenshot.Services
         {
             var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, TimeZoneInfo.Local);
             var times = task.schedule.times
+                .Where(value => task.schedule.type != "fixedOnce"
+                    || state.completedFixedTimes == null
+                    || !state.completedFixedTimes.Contains(value, StringComparer.Ordinal))
                 .Select(value =>
                 {
                     SettingsValidator.TryParseClock(value, out var parsed);
@@ -165,7 +219,8 @@ namespace ScheduledScreenshot.Services
                     {
                         Task = task,
                         DueUtc = candidate.Value,
-                        FixedOccurrenceKey = key
+                        FixedOccurrenceKey = key,
+                        FixedTimeSlot = task.schedule.type == "fixedOnce" ? time.Text : null
                     };
                 }
             }
