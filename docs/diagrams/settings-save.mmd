@@ -1,0 +1,25 @@
+sequenceDiagram
+    accTitle: Revision-checked settings save
+    accDescr: The engine validates an edit and compares its revision before writing files; stale drafts receive a conflict, while successful persistence updates live state and wakes scheduling.
+    participant Browser as 🌐 Browser draft
+    participant API as Local HTTP API
+    participant Engine as ⚙️ Application engine
+    participant Store as 💾 Portable files
+
+    Browser->>API: POST /api/save (settings, revision)
+    API->>Engine: save(candidate, revision)
+    Engine->>Engine: Validate settings and output paths
+    Note over Engine: Lock and compare revision
+    alt Revision is stale
+        Engine-->>API: Conflict, no writes
+        API-->>Browser: HTTP 409, keep draft
+    else Valid revision and successful writes
+        Engine->>Engine: Revise and reconcile progress
+        Engine->>Store: Save runtime, then settings
+        Store-->>Engine: Writes succeeded
+        Engine->>Engine: Apply state, rearm, and persist progress
+        Engine->>Engine: Wake scheduler
+        Engine-->>API: Current snapshot
+        API-->>Browser: HTTP 200 and snapshot
+    end
+    Note over Engine,Store: Separate file writes

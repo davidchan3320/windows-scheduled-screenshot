@@ -2,6 +2,22 @@
 
 Implementation and current-machine checks are complete. **Full release qualification is still pending** a completed 24-hour soak and the clean-OS/physical-device matrix below. The earlier soak stopped before completion; see the 03:04 update below.
 
+## Docker cache fixes, 2026-10-18 05:23 +08:00
+
+- Pinned Windows SDK 10.0.26100 and CRT 14.44.17.14. SDK preparation checks version selection and copies the prepared files into a reusable toolchain layer before source changes can invalidate it. An offline SDK check without the preparation cache mount passed.
+- GitHub Actions now explicitly restores/saves Cargo registry and target mounts, using a commit-pinned cache-dance action and a cache key covering the Dockerfile, Cargo configuration, manifest and lockfile. Docker's `type=gha,mode=max` cache retains the SDK layer. `actionlint` 1.7.7 passed; remote GitHub cache restore/save has not been executed.
+- The first source-change test exposed stale application reuse from cached Cargo timestamps. The build now cleans only the application's package outputs before compiling, retaining dependency outputs. The repeated test reused the SDK layer, compiled only `scheduled-screenshot` in 20.57 seconds, and embedded the changed HTML in the executable. The production export excludes the test marker and has a different checksum. Test context and output are isolated under `artifacts/`; repository sources were not changed for this test.
+- `./scripts/package.ps1 -OutputDirectory artifacts/release-docker` passed. ZIP identity, SHA-256 checksums, x64 GUI PE, static CRT imports, embedded manifest and Windows activation-context checks passed. `docker build --check .` reported no warnings, the Docker skill's build verification passed, and `git diff --check` passed.
+- Desktop smoke, soak and clean-OS qualification were not rerun for this build-only change.
+
+## Docker release build, 2026-10-18 05:02 +08:00
+
+- `./scripts/package.ps1 -OutputDirectory artifacts/release-docker` passed using Docker Linux containers, Rust 1.90.0 and cargo-xwin 0.23.1. The output contains the Windows x64 executable, executable-only ZIP and SHA-256 checksums. Packaging now defaults to Docker; CI builds the release on Linux after Windows checks.
+- The initial build exposed LLVM 14 corrupting UAC XML namespaces when merging a generated UAC fragment with the supplied manifest. `/MANIFESTUAC:NO` fixes this while retaining the supplied `asInvoker` declaration. Docker packaging now rejects invalid manifests, architecture and dynamic CRT imports; the check accepted a valid package and rejected the original malformed manifest.
+- Final artifact checks passed: ZIP identity, both SHA-256 checksums, x64 GUI PE, static CRT imports, UAC/DPI/long-path manifest settings, and Windows `CreateActCtxW` acceptance of the embedded manifest. Report: `artifacts/docker-release-verification.json`. Final executable size: 1,495,552 bytes.
+- Native release packaging with the manifest fix, native artifact checks, `-NoBuild` compatibility, Rust formatting, script syntax and whitespace checks passed. The final Docker rebuild reused the SDK and Cargo caches; Cargo completed in 0.08 seconds after installing the packaging validator.
+- Native desktop smoke, the full soak and clean-OS qualification were not rerun. The existing application remained running; loader validation did not launch another app instance. The GitHub workflow was updated but not executed remotely.
+
 ## Project structure cleanup, 2026-10-18 04:03 +08:00
 
 - Rust sources now use `src/`; native Python checks use `tests/native/`; browser runner/suite use `tests/browser/`; the manifest lives in `resources/`. Cargo, npm, CI, embedded-manifest paths, and production smoke references were updated. See [project structure](project-structure.md) for current commands; earlier entries below retain historical paths.

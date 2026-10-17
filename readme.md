@@ -9,7 +9,7 @@ A portable screenshot scheduler for **Windows 10/11 x64**. Capture every monitor
 
 No installer, administrator privileges, .NET, Node.js, Rust, or WebView is required to run the packaged app. The UI and other assets are embedded; no asset downloads are needed.
 
-[Quick start](#quick-start) · [Create a task](#create-a-task) · [Capture now](#capture-now-and-keyboard-shortcut) · [Configuration](#export-and-import-configuration) · [Build and verify](#build-and-verify) · [Documentation](#documentation)
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Create a task](#create-a-task) · [Capture now](#capture-now-and-keyboard-shortcut) · [Configuration](#export-and-import-configuration) · [Troubleshooting](#troubleshooting) · [Build and verify](#build-and-verify) · [Documentation](#documentation)
 
 ## Quick start
 
@@ -20,6 +20,36 @@ No installer, administrator privileges, .NET, Node.js, Rust, or WebView is requi
 5. Check the task's **Next capture** time. If scheduling is paused, select **Resume scheduling**. After a run, check **Last result** and the task's **Open folder** button.
 
 **Closing the browser tab keeps the scheduler running.** Use the tray icon to reopen the manager or select **Exit** to stop the app. Scheduled captures require an awake, unlocked Windows session.
+
+## How it works
+
+The browser manages tasks and preferences through a local HTTP API. Tray actions and the global shortcut reach the same application engine directly. One worker handles both scheduled and standalone captures.
+
+```mermaid
+flowchart TD
+    accTitle: Scheduled Screenshot runtime
+    accDescr: Browser requests and native controls reach one application engine, which dispatches a shared capture worker and persists settings and progress.
+    Browser["🌐 Browser manager"] -->|Local HTTP| API["Local API · http.rs"]
+    API --> Engine["⚙️ Scheduler and state · engine.rs"]
+    Native["⌨ Tray and global shortcut"] --> Engine
+    Engine -->|Dispatch batch| Worker["Sequential capture worker"]
+    Worker -->|Capture and encode| Images["▣ JPEG or PNG files"]
+    Engine -->|Persist| State["💾 Settings and task progress"]
+    Worker -.->|Completion event| Engine
+
+    classDef control fill:#e8eef7,stroke:#4f5d75,color:#172033
+    classDef component fill:#f5f5f5,stroke:#4f5d75,color:#172033
+    classDef focal fill:#fce8de,stroke:#9c3718,color:#172033,stroke-width:2px
+    classDef storage fill:#edf1e9,stroke:#485e3a,color:#172033
+    class Browser,Native control
+    class API,Worker component
+    class Engine focal
+    class Images,State storage
+```
+
+Settings and scheduled-task progress are saved in `data/` beside the executable. Images go to the task's output folder or the standalone capture folder. Manual captures do not change task progress.
+
+See [Architecture and API](docs/architecture.md) for timing, desktop availability, persistence, and revision checks. The editable [Mermaid source](docs/diagrams/runtime-overview.mmd) matches this diagram.
 
 ## Create a task
 
@@ -132,19 +162,42 @@ captures/                   # Default screenshot destination
 
 Legacy settings/runtime beside the executable are backed up to `data/legacy-backup` and migrated to schema 2. IDs and progress are preserved, and legacy output paths become absolute to retain their destinations. Original files remain.
 
+## Troubleshooting
+
+| Symptom | First check |
+| --- | --- |
+| A task does not capture | Enable the task, resume scheduling, and check **Next capture** and **Last result**. The desktop must be awake and unlocked. |
+| Screenshots appear in a different folder | **Capture now** uses the standalone destination; scheduled runs use the task's output folder. Relative paths start beside the executable. |
+| A shortcut is unavailable | Choose another combination under **Capture settings**, then select **Save shortcut**. Another app may already use the current one. |
+| An import leaves scheduling paused | Review paths and enabled tasks, then select **Resume scheduling**. Imports deliberately pause scheduling. |
+| Saving reports a conflict | Another window saved first. Keep a copy of your draft, reload the manager, and apply the edit again. |
+| A different portable copy opens | Exit the running app from its tray menu before launching another copy. Only one instance runs per Windows session. |
+
+For recovery and direct JSON edits, see [configuration troubleshooting](docs/configuration.md#if-the-configuration-does-not-apply). Use the tray menu to open logs when a capture or save reports an error.
+
 ## Build and verify
 
-Run the following commands from the repository root on Windows.
+Run the following commands from the repository root. The release build uses Docker Linux containers; running the app and native checks requires Windows.
 
-### Build the portable app
+[Docker release](#build-the-release-with-docker) · [Native build](#optional-native-build) · [CI artifacts](#ci-release-artifacts) · [Rust checks](#rust-checks) · [UI and browser tests](#ui-development-and-browser-tests) · [Native smoke and soak](#native-smoke-and-soak-tests)
 
-Prerequisites: Rust stable (minimum declared version: 1.88), the `x86_64-pc-windows-msvc` target, and Visual Studio C++ build tools with the Windows SDK. Use a developer PowerShell environment.
+### Build the release with Docker
+
+Start Docker with Linux containers (Docker Desktop on Windows). Check that `docker info --format '{{.OSType}}'` prints `linux`, then build from PowerShell:
 
 ```powershell
-rustup target add x86_64-pc-windows-msvc
 ./scripts/package.ps1
-./artifacts/release/ScheduledScreenshot.exe
 ```
+
+Or use Docker directly from Windows, Linux, or macOS:
+
+```sh
+docker build --platform linux/amd64 --target release --output type=local,dest=artifacts/release .
+```
+
+The first build downloads the container toolchain, Rust dependencies, and Microsoft CRT/Windows SDK; SDK extraction can take 15 minutes or more with little console output. The prepared SDK is stored in a Docker layer before application sources are copied, so source changes reuse it. Local builds also reuse Cargo registry and compilation caches. No host Rust, Visual Studio, Python, or Node.js installation is needed for release packaging.
+
+The [Dockerfile](Dockerfile) pins Rust 1.90.0, cargo-xwin 0.23.1, Windows SDK 10.0.26100 and CRT 14.44.17.14, builds the locked dependencies for `x86_64-pc-windows-msvc`, and embeds the checked-in UI assets. SDK preparation checks the selected versions even when a local SDK cache already exists. Packaging checks the executable's architecture, embedded manifest and static CRT imports before exporting it. [cargo-xwin](https://github.com/rust-cross/cargo-xwin) downloads the Microsoft build components under their upstream license terms.
 
 Packaging produces these files in `artifacts/release/`:
 
@@ -154,11 +207,42 @@ Packaging produces these files in `artifacts/release/`:
 | `ScheduledScreenshot-win-x64.zip` | ZIP containing only the executable |
 | `SHA256SUMS.txt` | SHA-256 checksums for the executable and ZIP |
 
+On Windows, start the packaged app with `./artifacts/release/ScheduledScreenshot.exe`. Docker is only needed to build it; the exported app runs directly on Windows.
+
 The executable is currently unsigned. Compare `Get-FileHash artifacts/release/ScheduledScreenshot.exe -Algorithm SHA256` with `SHA256SUMS.txt` to verify the packaged executable.
 
-If an earlier release is running, package to another folder with `./scripts/package.ps1 -OutputDirectory artifacts/release-ui`. Exit the running app before replacing its executable.
+To choose another output folder, including when an earlier release is running:
+
+```powershell
+./scripts/package.ps1 -OutputDirectory artifacts/release-docker
+```
+
+Exit the running app before replacing its executable. Docker exports go directly to the selected folder; they do not populate the host's `target/` directory.
+
+The Docker release verified on 2026-10-18 was exported to `artifacts/release-docker/`. Checksums, ZIP contents, static CRT imports, embedded manifest settings and Windows loader acceptance passed. Desktop smoke tests were not rerun for that build. See [verification results](docs/verification.md#docker-cache-fixes-2026-10-18-0523-0800) for details and remaining release qualification.
+
+### Optional native build
+
+Install Rust stable (minimum declared version: 1.88), the `x86_64-pc-windows-msvc` target, and Visual Studio C++ build tools with the Windows SDK. From developer PowerShell:
+
+```powershell
+rustup target add x86_64-pc-windows-msvc
+./scripts/package.ps1 -Native
+```
+
+Use `./scripts/package.ps1 -NoBuild` to package an existing executable from `target/x86_64-pc-windows-msvc/release/` without compiling. This option packages a native build; it does not reuse a previous Docker export. Both options support `-OutputDirectory`.
+
+### CI release artifacts
+
+The [Portable Windows build workflow](.github/workflows/windows-build.yml) runs Rust, stylesheet, JavaScript and browser checks on Windows, then builds and validates the release in Docker on Linux. After a successful workflow run, download the `ScheduledScreenshot-win-x64` artifact from GitHub Actions for the executable, portable ZIP and checksums.
+
+CI saves Docker layers with `type=gha,mode=max`, including the prepared SDK. Because [Docker's GitHub cache does not preserve cache mounts](https://docs.docker.com/build/ci/github-actions/cache/#cache-mounts), the workflow separately restores and saves Cargo's registry and target directories with `actions/cache` and a commit-pinned `buildkit-cache-dance` action. Its cache key includes the Dockerfile, Cargo configuration, manifest and lockfile; changes to those inputs create a new Cargo cache.
+
+When build inputs change, Docker clears only this application's Cargo outputs before rebuilding. Compiled dependencies stay cached, while restored timestamps cannot cause an older executable to be packaged.
 
 ### Rust checks
+
+These checks use the native Windows Rust/MSVC toolchain described above.
 
 ```powershell
 cargo fmt --all -- --check
@@ -211,13 +295,19 @@ The soak test records memory, handles, CPU, and progress in `artifacts/soak-*`, 
 
 ## Documentation
 
-| Guide | Contents |
+Use the [documentation index](docs/README.md) to choose a guide by task.
+
+| Guide | Read it to… |
 | --- | --- |
-| [Apply a configuration](docs/configuration.md) | Import, save settings, edit JSON, and troubleshoot |
-| [Project structure](docs/project-structure.md) | Source layout, scripts, test entry points, and generated files |
-| [Architecture and API](docs/architecture.md) | Runtime design and API reference |
-| [Verification](docs/verification.md) | Test evidence and remaining release checks |
-| [Legacy audit](docs/legacy-audit.md) | Migration and preservation details |
-| [Implementation handoff](docs/plans/2026-10-18-0201-portable-windows-scheduler.md) | Implementation history and progress |
+| [Apply a configuration](docs/configuration.md) | Import a backup, save settings, edit JSON, or recover from an error |
+| [Project structure](docs/project-structure.md) | Find source modules, build scripts, test commands, and diagram maintenance instructions |
+| [Architecture and API](docs/architecture.md) | Understand the runtime, capture worker, persistence, and local API |
+| [Verification](docs/verification.md) | Review dated test evidence and outstanding release qualification |
+| [Legacy audit](docs/legacy-audit.md) | Review migration behavior and preserved legacy files |
+| [Implementation handoff](docs/plans/2026-10-18-0201-portable-windows-scheduler.md) | Trace implementation history and progress |
+
+**Visual walkthroughs:** [Runtime overview](docs/architecture.md#runtime-overview) · [Configuration import](docs/configuration.md#import-a-configuration-file) · [Settings save and conflicts](docs/architecture.md#saving-edits-with-revision-checks).
+
+Diagrams are embedded as Mermaid code in Markdown, with matching `.mmd` sources under `docs/diagrams/`. Use a Mermaid-capable Markdown viewer to render them; the surrounding text explains each flow too.
 
 Dependency notices are embedded and accessible in the manager. After dependency updates, refresh them with `python scripts/notices.py`.

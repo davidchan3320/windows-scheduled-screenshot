@@ -4,6 +4,9 @@ fn main() {
         let manifest = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
             .join("resources/app.manifest");
         println!("cargo:rustc-link-arg-bin=ScheduledScreenshot=/MANIFEST:EMBED");
+        // The input manifest already declares asInvoker. Avoid merging a second
+        // linker-generated UAC fragment (older lld versions corrupt its namespaces).
+        println!("cargo:rustc-link-arg-bin=ScheduledScreenshot=/MANIFESTUAC:NO");
         println!(
             "cargo:rustc-link-arg-bin=ScheduledScreenshot=/MANIFESTINPUT:{}",
             manifest.display()

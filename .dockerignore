@@ -1,0 +1,17 @@
+# Only release inputs enter the build context. Excludes runtime data, captures,
+# local toolchains, existing artifacts, Git history and node_modules.
+**
+!Cargo.toml
+!Cargo.lock
+!build.rs
+!.cargo/
+!.cargo/config.toml
+!src/
+!src/**
+!ui/
+!ui/**
+!resources/
+!resources/**
+!THIRD_PARTY_NOTICES.txt
+!scripts/
+!scripts/package-release.py
