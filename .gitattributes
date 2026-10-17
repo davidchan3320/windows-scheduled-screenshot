@@ -1,0 +1,2 @@
+# Tailwind emits LF; preserve it for the byte-for-byte generated CSS check.
+/ui/style.css text eol=lf
