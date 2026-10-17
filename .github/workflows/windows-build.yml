@@ -1,46 +1,59 @@
-name: Windows build
+name: Portable Windows build
 
 on:
   push:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          dotnet-version: 10.0.x
-
-      - name: Restore
-        run: dotnet restore ScreenCapture.sln
-
-      - name: Check offline editor
-        run: node scripts/check-editor.js
-
-      - name: Build
-        run: dotnet build ScreenCapture.sln --configuration Release --no-restore --property:Platform=x64
-
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install UI build tools and verify bundled CSS
+        run: |
+          npm ci
+          npm run check:css
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
       - name: Test
-        run: dotnet test tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj --configuration Release --no-build --property:Platform=x64
-
-      - name: Package portable application
+        run: cargo test --locked --all-targets
+      - name: Check JavaScript
+        run: |
+          node --check ui/app.js
+          node --check ui/i18n.js
+      - name: Browser tests without desktop capture
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force artifacts | Out-Null
-          Compress-Archive -Path src/ScheduledScreenshot/bin/x64/Release/net48/* -DestinationPath artifacts/ScheduledScreenshot-win-x64.zip
-          (Get-FileHash artifacts/ScheduledScreenshot-win-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant() + '  ScheduledScreenshot-win-x64.zip' | Set-Content artifacts/ScheduledScreenshot-win-x64.sha256
-
-      - name: Production smoke test
+          npx playwright install chromium
+          cargo build --locked --example ui-test-host
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:browser
+      - name: Package single executable
         shell: pwsh
-        run: ./scripts/test-production.ps1 -NoBuild -PackagePath artifacts/ScheduledScreenshot-win-x64.zip
-
-      - name: Upload artifact
+        run: ./scripts/package.ps1
+      - name: Upload executable, ZIP and SHA-256
         uses: actions/upload-artifact@v4
         with:
           name: ScheduledScreenshot-win-x64
-          path: artifacts/*
+          path: artifacts/release/*
+      - name: Upload browser verification images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-verification
+          path: artifacts/browser-ci/*.png

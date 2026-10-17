@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Scheduled Screenshot</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="/i18n.js" defer></script>
+  <script src="/app.js" defer></script>
+</head>
+<body>
+<header class="app-header">
+  <div class="mx-auto flex max-w-[1440px] flex-col justify-between gap-5 px-4 py-5 sm:px-8 lg:flex-row lg:items-center">
+  <div class="brand"><span class="camera" aria-hidden="true"></span><div><h1>Scheduled Screenshot</h1><p>Your screen, on your schedule</p></div></div>
+  <div class="toolbar"><label class="language-option"><span>Language</span><select id="language" aria-label="Language"><option value="en" lang="en">English</option><option value="zh-Hant" lang="zh-Hant">繁體中文</option></select></label><span id="status" role="status">Connecting...</span><button id="pause">Pause scheduling</button></div>
+  </div>
+</header>
+<main class="mx-auto max-w-[1440px] px-4 py-7 sm:px-8 sm:py-9">
+  <div id="notice" role="alert" hidden></div>
+  <section class="quick-capture" aria-labelledby="quick-title">
+    <div class="capture-bar">
+    <div><h2 id="quick-title">Take a screenshot</h2><p>Capture once without a task. JPEG images are saved in date subfolders.</p></div>
+    <div class="capture-actions"><button id="capture-now" class="primary">Capture now</button><kbd id="capture-shortcut" hidden></kbd><button id="open-captures">Open captures folder</button></div>
+    </div>
+    <details id="capture-settings" class="capture-settings">
+      <summary><span>Capture settings</span><span class="text-xs font-normal text-muted">Folder &amp; keyboard shortcut</span><span id="capture-settings-draft" class="settings-badge" hidden>Unsaved changes</span><span id="capture-settings-warning" class="settings-badge" hidden>Shortcut needs attention</span></summary>
+      <div class="capture-settings-grid">
+    <form id="manual-folder-form" class="manual-folder-form">
+      <label for="manual-folder">Save screenshots to</label>
+      <div class="path-row"><input id="manual-folder" required maxlength="2000" autocomplete="off" aria-describedby="manual-folder-help manual-folder-state"><button type="button" id="manual-browse">Browse...</button><button id="manual-folder-save" type="submit" disabled>Save folder</button></div>
+      <p id="manual-folder-help" class="hint">Use a full path, or a relative path starting beside the executable.</p>
+      <p id="manual-folder-state" class="hint" role="status"></p>
+      <span id="manual-output-path" class="task-path"></span>
+    </form>
+    <form id="shortcut-form" class="shortcut-form">
+      <label class="check"><input id="shortcut-enabled" type="checkbox"> Enable capture shortcut</label>
+      <p class="hint">Works in any app while Scheduled Screenshot is running. Uses your saved screenshot folder.</p>
+      <div class="shortcut-controls"><label for="shortcut-modifiers">Modifier keys<select id="shortcut-modifiers"><option value="ctrl+shift">Ctrl + Shift</option><option value="ctrl+alt">Ctrl + Alt</option><option value="alt+shift">Alt + Shift</option><option value="ctrl+alt+shift">Ctrl + Alt + Shift</option></select></label><label for="shortcut-key">Key<select id="shortcut-key"></select></label><button id="shortcut-save" type="submit" disabled>Save shortcut</button></div>
+      <p id="shortcut-status" class="hint" role="status"></p>
+    </form>
+      </div>
+    </details>
+    <p id="manual-result" class="capture-result" role="status" hidden></p>
+  </section>
+  <section class="task-section" aria-labelledby="tasks-title">
+    <div class="section-heading"><div><h2 id="tasks-title">Capture tasks <span id="count">0</span></h2><p>Choose a task to edit its schedule, files, or stop conditions.</p></div><button class="primary" id="create">+ New task</button></div>
+    <div class="table-wrap">
+      <table><thead id="task-head"><tr><th scope="col">Task &amp; output folder</th><th scope="col">Schedule</th><th scope="col">Next capture</th><th scope="col">Last result</th><th scope="col">Actions</th></tr></thead><tbody id="tasks"></tbody></table>
+      <div id="empty" hidden><span class="empty-icon camera" aria-hidden="true"></span><h3>Set your first capture</h3><p>Choose when to capture and where to save.<br>New tasks start disabled until you enable them.</p><button id="empty-create" class="primary">Create a task</button></div>
+    </div>
+  </section>
+  <div class="mt-7 grid gap-4 xl:grid-cols-2">
+  <section class="preferences"><div><h2>Keep it running</h2><p>Closing this tab keeps the scheduler running. Reopen it or exit from the tray icon.</p></div><label class="check"><input id="startup" type="checkbox"> Start at sign-in</label><p class="hint">If you move the executable, turn this setting off and on again to update your Windows startup shortcut.</p><div class="capture-actions"><button id="restart">Restart application</button></div><p id="restart-result" class="hint" role="status" hidden></p></section>
+  <section class="preferences" aria-labelledby="config-title"><div><h2 id="config-title">Configuration</h2><p>Back up or transfer your tasks and preferences as a JSON file.</p></div><div class="capture-actions"><button id="export-config">Export config</button><button id="import-config">Import config</button></div><input id="config-file" type="file" accept=".json,application/json" aria-label="Configuration file" hidden><p id="config-result" class="hint" role="status" hidden></p></section>
+  </div>
+  <footer><span>Windows desktop &middot; Local time &middot; <a href="/licenses.txt" target="_blank" rel="noopener">Third-party notices</a></span><span id="location"></span></footer>
+</main>
+
+<dialog id="editor" aria-labelledby="editor-title">
+  <form id="task-form" novalidate>
+    <div class="editor-header">
+      <div class="dialog-heading"><div><h2 id="editor-title">New task</h2><p>Set the details, then save your task.</p></div><button type="button" id="close" class="icon-button" aria-label="Close task editor">&times;</button></div>
+      <div class="identity"><label for="name">Task name<input id="name" maxlength="64" required autocomplete="off" placeholder="e.g. Workday reference"></label><label class="enable-option"><input id="enabled" type="checkbox"><span>Enable task<small>Run on schedule after saving</small></span></label></div>
+      <div id="form-error" role="alert" hidden></div>
+      <div class="editor-tabs" role="tablist" aria-label="Task settings">
+        <button type="button" id="tab-schedule" role="tab" aria-controls="panel-schedule" aria-selected="true" data-panel="schedule">Schedule</button>
+        <button type="button" id="tab-files" role="tab" aria-controls="panel-files" aria-selected="false" tabindex="-1" data-panel="files">Files &amp; image</button>
+        <button type="button" id="tab-limits" role="tab" aria-controls="panel-limits" aria-selected="false" tabindex="-1" data-panel="limits">Stop conditions</button>
+      </div>
+    </div>
+    <div class="editor-body">
+      <div class="editor-panels">
+        <section id="panel-schedule" role="tabpanel" aria-labelledby="tab-schedule" tabindex="0">
+          <h3>When should this task capture?</h3><p class="section-intro">All dates and times use your Windows local time.</p>
+          <label for="kind">Schedule type</label><select id="kind"><option value="interval">Repeat at an interval</option><option value="once">Once, on a date and time</option><option value="fixed">At specific times</option><option value="fixedOnce" hidden>Legacy: each time once</option></select>
+          <div id="once-fields"><label for="at">Date and time</label><input id="at" type="datetime-local" step="1" required></div>
+          <div id="interval-fields">
+            <label for="interval">Capture every</label>
+            <div class="unit-row"><input id="interval" type="number" min="1" max="31536000" required><select id="interval-unit" aria-label="Interval unit"><option value="1">Seconds</option><option value="60">Minutes</option><option value="3600">Hours</option></select></div>
+            <label class="check"><input id="active" type="checkbox"> Limit to part of the day</label>
+            <div class="pair inset" id="hours"><label>From<input id="start" type="time" step="1" required></label><label>Until<input id="end" type="time" step="1" required></label><p class="hint span-all">The end time is excluded. Choose hours within the same day.</p></div>
+          </div>
+          <div id="fixed-fields"><div class="field-heading"><span class="field-label">Capture times</span><button type="button" id="add-time" class="text-button">+ Add time</button></div><div id="times" class="time-list"></div><p class="hint" id="legacy-note" hidden>Imported schedule: each listed time runs once in total, on the next selected weekday.</p></div>
+          <div id="weekdays"><div class="field-heading"><span class="field-label">Repeat on</span><div class="day-presets"><button type="button" id="days-all" class="text-button">Every day</button><button type="button" id="days-work" class="text-button">Weekdays</button></div></div><div class="days" role="group" aria-label="Days of the week"></div></div>
+          <p class="info-note">Missed runs are skipped. Capture is unavailable while Windows is locked or disconnected.</p>
+        </section>
+
+        <section id="panel-files" role="tabpanel" aria-labelledby="tab-files" tabindex="0" hidden>
+          <h3>Where should the images go?</h3><p class="section-intro">Each capture saves one image per connected monitor.</p>
+          <label for="folder">Output folder</label><div class="path-row"><input id="folder" required autocomplete="off" aria-describedby="folder-help"><button type="button" id="browse">Browse...</button></div>
+          <p class="hint" id="folder-help">Use a full path, or a relative path starting beside the executable.</p>
+          <label class="check"><input id="dated" type="checkbox"> Create a subfolder for each date</label><p class="hint check-hint">Example: captures / 2026-10-18 / image.jpg</p>
+          <div class="field-divider"></div>
+          <label for="template">Filename template</label><input id="template" required autocomplete="off" aria-describedby="template-help">
+          <p class="hint" id="template-help">Click a token to insert it at the cursor. The extension is added for you.</p>
+          <div id="tokens" class="tokens" aria-label="Filename tokens"></div>
+          <div class="pair"><label>Image format<select id="format"><option value="jpeg">JPEG &middot; smaller files</option><option value="png">PNG &middot; lossless</option></select></label><label id="quality-label">JPEG quality (1&ndash;100)<input id="quality" type="number" min="1" max="100" required></label></div>
+          <label class="check"><input id="cursor" type="checkbox"> Include the mouse cursor</label>
+        </section>
+
+        <section id="panel-limits" role="tabpanel" aria-labelledby="tab-limits" tabindex="0" hidden>
+          <h3>When should this task stop?</h3><p class="section-intro">Add a limit, or let the schedule keep running.</p>
+          <label for="stop">Stop condition</label><select id="stop"><option value="none">No additional limit</option><option value="at">At a date and time</option><option value="duration">After an elapsed duration</option><option value="count">After successful captures</option></select>
+          <label id="deadline-label">Stop at (local time)<input id="deadline" type="datetime-local" step="1" required></label>
+          <div id="duration-label"><label for="duration">Duration from enabling</label><div class="unit-row"><input id="duration" type="number" min="1" max="31536000" required><select id="duration-unit" aria-label="Duration unit"><option value="1">Seconds</option><option value="60">Minutes</option><option value="3600">Hours</option><option value="86400">Days</option></select></div></div>
+          <label id="captures-label">Number of successful captures<input id="captures" type="number" min="1" max="1000000" required></label>
+          <p class="info-note">A scheduled capture counts only when every monitor image is saved. &ldquo;Capture now&rdquo; does not use a scheduled run.</p>
+        </section>
+      </div>
+      <aside class="task-summary" aria-label="Task summary">
+        <div class="summary-heading"><span class="camera" aria-hidden="true"></span><h3>Your capture plan</h3></div>
+        <span id="summary-state" class="state-tag">Disabled</span>
+        <dl><dt>When</dt><dd id="summary-schedule"></dd><dt>Repeat on</dt><dd id="summary-days"></dd><dt>Stop</dt><dd id="summary-stop"></dd><dt>Image</dt><dd id="summary-image"></dd></dl>
+        <div class="preview"><span>Example file &middot; monitor 1</span><output id="preview">Enter task details to preview</output><small>Existing files receive a numbered suffix.</small></div>
+      </aside>
+    </div>
+    <div class="dialog-actions editor-actions"><span id="save-hint">Saved as disabled. Enable when ready.</span><button type="button" id="cancel">Cancel</button><button type="submit" id="save" class="primary">Save task</button></div>
+  </form>
+</dialog>
+<dialog id="delete-dialog" aria-labelledby="delete-title"><form method="dialog"><h2 id="delete-title">Delete task?</h2><p id="delete-name"></p><p>Saved screenshots will remain in their output folder.</p><div class="dialog-actions"><button value="cancel">Cancel</button><button class="danger" value="delete">Delete task</button></div></form></dialog>
+<dialog id="import-dialog" aria-labelledby="import-title"><h2 id="import-title">Replace configuration?</h2><p id="import-summary"></p><p>This replaces all current tasks and preferences, including language and start at sign-in. Scheduling will be paused until you resume it.</p><p>Screenshots and run progress are not included. Relative output paths use this application's folder.</p><p id="import-error" role="alert" hidden></p><div class="dialog-actions"><button id="import-cancel">Cancel</button><button id="import-confirm" class="primary">Replace configuration</button></div></dialog>
+</body>
+</html>

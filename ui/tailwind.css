@@ -1,0 +1,258 @@
+/* Source stylesheet. Run npm run build:css; style.css is embedded in the EXE. */
+@import "tailwindcss" source(none);
+@source "./index.html";
+@source "./app.js";
+
+@theme {
+  --font-sans: "Segoe UI Variable", "Segoe UI", "Microsoft JhengHei UI", "Microsoft JhengHei", sans-serif;
+  --font-mono: Consolas, "Cascadia Mono", monospace;
+  --color-ink: #173047;
+  --color-muted: #607086;
+  --color-paper: #f5f7fb;
+  --color-line: #dae3ed;
+  --color-brand: #066ac9;
+  --color-brand-deep: #144d87;
+  --color-brand-soft: #edf5ff;
+  --color-success: #187354;
+  --color-danger: #ae2836;
+}
+
+@layer base {
+  :root { @apply font-sans text-ink bg-paper; font-size: 16px; line-height: 1.5; --blue: #066ac9; --muted: #607086; --line: #dae3ed; }
+  body { margin: 0; }
+  h1, h2, h3 { @apply font-semibold tracking-tight; line-height: 1.25; }
+  h1 { @apply text-2xl; }
+  h2 { @apply text-2xl; }
+  h3 { @apply text-lg; }
+  p { @apply text-muted; margin: 6px 0; }
+  a { @apply text-brand underline-offset-4 hover:underline; }
+  button { @apply inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-line bg-white px-4 py-2 text-sm font-medium text-ink shadow-xs transition-colors cursor-pointer; }
+  button:hover { @apply border-slate-400 bg-slate-50; }
+  button:disabled { @apply opacity-45 cursor-default; }
+  button:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid #066ac9; outline-offset: 3px; }
+  label, .field-label { @apply text-sm font-semibold; }
+  input:not([type=checkbox]), select { @apply block min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 text-ink shadow-xs; margin: 7px 0 16px; }
+  input:hover, select:hover { @apply border-slate-400; }
+  input:disabled, select:disabled { @apply bg-slate-50 text-muted; }
+  input[type=checkbox] { @apply size-4 shrink-0 accent-brand; margin: 0; }
+  [hidden] { display: none !important; }
+  dialog { @apply rounded-2xl border border-line bg-white p-0 text-ink; margin: auto; box-shadow: 0 28px 100px #17304740; }
+  dialog::backdrop { background: #102c4a85; backdrop-filter: blur(3px); }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; } }
+}
+
+@layer components {
+  .primary { @apply border-brand bg-brand font-semibold text-white shadow-xs; }
+  .primary:hover { @apply border-brand-deep bg-brand-deep text-white; }
+  .danger { @apply text-danger; }
+  .app-header { @apply border-b border-line bg-white; }
+  .brand { @apply flex items-center gap-4; }
+  .brand p { @apply mt-1 mb-0 text-sm; }
+  .camera { @apply relative inline-block shrink-0 rounded-lg border-2 border-brand bg-brand-soft; width: 44px; height: 36px; }
+  .camera::before { content: ""; position: absolute; width: 14px; height: 14px; border: 2px solid #066ac9; border-radius: 50%; top: 8px; left: 13px; }
+  .camera::after { content: ""; position: absolute; width: 17px; height: 5px; border-radius: 3px 3px 0 0; background: #066ac9; top: -6px; left: 5px; }
+  .toolbar { @apply flex flex-wrap items-center gap-3; }
+  .language-option { @apply flex items-center gap-2 text-xs font-medium text-muted; }
+  .language-option select { @apply m-0 w-auto min-h-10 text-sm; }
+  #status { @apply inline-flex items-center rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-success; }
+  #status::before { content: ""; width: 6px; height: 6px; background: currentColor; border-radius: 50%; margin-right: 7px; }
+  #status.paused { @apply bg-amber-50 text-amber-800; }
+  .quick-capture { @apply mb-9 overflow-hidden rounded-xl border border-line bg-white shadow-xs; }
+  .capture-bar { @apply flex flex-wrap items-center justify-between gap-4 border-l-4 border-brand px-6 py-5; }
+  .quick-capture h2 { @apply text-lg; }
+  .quick-capture p { @apply text-sm; }
+  .capture-actions { @apply flex flex-wrap items-center gap-2; }
+  #capture-shortcut { @apply rounded-md border border-line bg-paper px-2 py-1 font-mono text-xs text-muted; }
+  .capture-settings { @apply border-t border-line; }
+  .capture-settings > summary { @apply flex cursor-pointer list-none flex-wrap items-center gap-3 bg-slate-50/70 px-6 py-3 text-sm font-medium text-brand-deep; }
+  .capture-settings > summary::-webkit-details-marker { display: none; }
+  .capture-settings > summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .15s; }
+  .capture-settings[open] > summary::before { transform: rotate(45deg); }
+  .capture-settings[open] > summary { @apply border-b border-line; }
+  .settings-badge { @apply rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-900; }
+  .capture-settings-grid { @apply grid divide-y divide-line; grid-template-columns: minmax(0, 1fr); }
+  .manual-folder-form, .shortcut-form { @apply min-w-0 p-6; }
+  .manual-folder-form .path-row { @apply mt-2; }
+  .manual-folder-form .hint, .shortcut-form .hint { @apply mt-2 mb-0 text-xs; }
+  .manual-folder-form .task-path { @apply mt-2 rounded-md bg-paper px-3 py-2; }
+  .manual-folder-form .path-row { @apply flex-wrap; }
+  .manual-folder-form .path-row input { flex-basis: 100%; }
+  .manual-folder-form .path-row button { @apply min-h-9 py-1 text-xs; }
+  .shortcut-form .check { @apply mt-0 mb-2 font-semibold; }
+  .shortcut-controls { @apply my-3 flex flex-wrap items-end gap-3; }
+  .shortcut-controls select { @apply mt-2 mb-0; }
+  .shortcut-controls label { min-width: 78px; }
+  .shortcut-controls button { @apply text-xs; }
+  #shortcut-status.failed { @apply text-danger; }
+  .capture-result { @apply mx-6 mb-4 mt-0 rounded-lg bg-emerald-50 px-3 py-2 text-success; overflow-wrap: anywhere; }
+  .capture-result.failed { @apply bg-red-50 text-danger; }
+  .section-heading { @apply mb-5 flex flex-wrap items-center justify-between gap-4; }
+  .section-heading p { @apply mt-2 text-sm; }
+  #count { @apply ml-2 inline-flex min-w-7 items-center justify-center rounded-full bg-slate-200/70 px-2 py-1 align-middle text-xs font-semibold text-muted; }
+  .table-wrap { @apply overflow-hidden rounded-xl border border-line bg-white shadow-xs; }
+  table { @apply w-full table-fixed border-collapse text-left; }
+  th { @apply border-b border-line bg-slate-50 px-5 py-3 text-xs font-semibold text-muted; }
+  th:first-child { width: 29%; }
+  th:nth-child(2) { width: 19%; }
+  th:nth-child(3) { width: 17%; }
+  th:nth-child(4) { width: 18%; }
+  th:last-child { width: 17%; }
+  td { @apply border-b border-line px-5 py-6 align-top text-sm; overflow-wrap: anywhere; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { @apply bg-slate-50/50; }
+  .task-heading { @apply mb-3 grid items-start gap-3; grid-template-columns: minmax(0, 1fr) 92px; }
+  .task-title { @apply block min-h-7 border-0 bg-transparent p-0 text-left text-base font-semibold shadow-none; line-height: 28px; white-space: normal; overflow-wrap: anywhere; }
+  .task-title:hover { @apply bg-transparent text-brand underline underline-offset-4; }
+  .task-toggle { @apply m-0 flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-full bg-slate-100 px-2 text-xs font-medium text-muted; white-space: nowrap; }
+  .task-toggle:has(input:checked) { @apply bg-emerald-50 text-success; }
+  .task-toggle input { @apply size-3.5; }
+  .task-path { @apply block font-mono text-xs leading-relaxed text-muted; overflow-wrap: anywhere; }
+  .task-details { @apply mt-2 block text-xs leading-relaxed text-muted; }
+  .schedule-main { @apply font-semibold tabular-nums; }
+  .row-actions { @apply flex flex-wrap gap-1.5; }
+  .row-actions button { @apply min-h-9 px-2 py-1 text-xs; }
+  .row-actions .edit-task { @apply mb-0.5 w-full border-blue-200 bg-brand-soft font-semibold text-brand; }
+  .row-actions .edit-task:hover { @apply bg-blue-100; }
+  .preferences { @apply grid min-w-0 items-start gap-3 rounded-xl border border-line bg-white p-6; grid-template-columns: minmax(0, 1fr) auto; }
+  .preferences h2 { @apply text-base; }
+  .preferences p { @apply text-sm; }
+  .preferences > .hint { @apply col-span-full m-0 text-xs; }
+  .check { @apply my-3 flex cursor-pointer items-center gap-2.5 font-normal; }
+  footer { @apply flex flex-wrap justify-between gap-3 py-6 text-xs text-muted; overflow-wrap: anywhere; }
+  #empty { @apply px-6 py-14 text-center; }
+  .empty-icon { @apply mb-5; }
+  #empty p { @apply mt-3 mb-6; }
+  #notice, #form-error, #import-error { @apply rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-950; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #notice { @apply mb-6; }
+  #form-error { @apply my-3 max-h-24 overflow-auto; }
+  #editor { width: min(1060px, calc(100vw - 48px)); max-height: min(920px, calc(100dvh - 48px)); overflow: hidden; }
+  #task-form { @apply flex flex-col; max-height: min(918px, calc(100dvh - 50px)); }
+  .editor-header { @apply shrink-0 px-7 pt-6; }
+  .dialog-heading { @apply flex items-start justify-between gap-5; }
+  .dialog-heading h2 { @apply text-2xl; }
+  .dialog-heading p { @apply mt-1 text-sm; }
+  .icon-button { @apply min-h-9 border-transparent px-3 py-1 text-2xl shadow-none; line-height: 1; }
+  .identity { @apply mt-5 grid items-center gap-7; grid-template-columns: minmax(0, 1fr) auto; }
+  .enable-option { @apply flex cursor-pointer items-center gap-3 rounded-lg border border-line bg-paper px-4 py-3; }
+  .enable-option small { @apply mt-1 block text-xs font-normal text-muted; }
+  .editor-tabs { @apply mt-1 flex gap-1; }
+  .editor-tabs button { @apply rounded-b-none border-0 border-b-2 border-transparent bg-transparent px-4 py-3 font-semibold text-muted shadow-none; }
+  .editor-tabs button[aria-selected=true] { @apply border-brand bg-brand-soft text-brand; }
+  .editor-tabs button:hover { @apply text-brand; }
+  .editor-body { @apply grid min-h-0 overflow-y-auto border-t border-line; grid-template-columns: minmax(0, 1fr) 286px; }
+  .editor-panels { @apply min-w-0 p-7; }
+  [role=tabpanel] { outline-offset: 8px; }
+  .section-intro { @apply mt-2 mb-6 text-sm; }
+  .unit-row { @apply grid max-w-sm gap-2.5; grid-template-columns: minmax(80px, 1fr) minmax(120px, 1fr); }
+  .pair { @apply grid grid-cols-2 gap-x-4; }
+  .span-all { @apply col-span-full; }
+  .inset { @apply mb-4 ml-7 border-l-2 border-line pl-4; }
+  .inset input { @apply mb-1; }
+  .hint { @apply text-xs leading-relaxed; }
+  .check-hint { margin: -6px 0 0 26px; }
+  .path-row { @apply my-2 flex items-center gap-2; }
+  .path-row input { @apply m-0 min-w-0 flex-1; }
+  .path-row button { @apply shrink-0; }
+  .field-heading { @apply mt-5 mb-3 flex flex-wrap items-center justify-between gap-2; }
+  .text-button { @apply min-h-8 border-0 bg-transparent px-1 py-0.5 text-xs text-brand shadow-none; }
+  .open-folder { @apply mt-1 -ml-1 block; }
+  .day-presets { @apply flex gap-2; }
+  .days { @apply grid grid-cols-7 gap-1.5; }
+  .days label { @apply relative flex cursor-pointer items-center justify-center gap-1 rounded-lg border border-line px-1 py-3 text-xs; }
+  .days label:has(input:checked) { @apply border-blue-300 bg-brand-soft text-brand-deep; }
+  .days input { width: 13px; height: 13px; }
+  .time-list { @apply flex flex-wrap gap-x-3 gap-y-2; }
+  .time-entry { @apply flex items-center gap-1; }
+  .time-entry input { @apply m-0 w-40; }
+  .time-entry button { @apply min-h-9 px-2 py-1 text-xl; }
+  .info-note { @apply mt-6 rounded-r-lg border-l-2 border-slate-300 bg-paper px-4 py-3 text-xs leading-relaxed; }
+  .field-divider { @apply my-6 border-t border-line; }
+  .tokens { @apply mt-3 mb-6 flex flex-wrap gap-1.5; }
+  .tokens button { @apply min-h-8 border-blue-100 bg-brand-soft px-2 py-1 font-mono text-xs text-brand-deep shadow-none; }
+  .task-summary { @apply border-l border-line bg-paper p-6; overflow-wrap: anywhere; }
+  .summary-heading { @apply mb-5 flex items-center gap-2.5; }
+  .summary-heading h3 { @apply text-base; }
+  .summary-heading .camera { transform: scale(.65); transform-origin: left center; width: 44px; margin-right: -14px; }
+  .state-tag { @apply inline-block rounded-full border border-line bg-white px-3 py-1 text-xs font-semibold text-muted; }
+  .state-tag.enabled { @apply border-emerald-200 bg-emerald-50 text-success; }
+  dl { @apply my-6; }
+  dt { @apply mt-4 text-xs text-muted; }
+  dd { @apply mt-1 text-sm font-semibold; }
+  .preview { @apply rounded-xl border border-brand-deep bg-ink p-4 shadow-sm; }
+  .preview > span { @apply text-xs font-semibold text-blue-100; }
+  .preview output { @apply my-3 block font-mono text-xs leading-relaxed text-cyan-100; overflow-wrap: anywhere; }
+  .preview small { @apply block text-xs leading-relaxed text-slate-300; }
+  .dialog-actions { @apply flex items-center justify-end gap-2.5 border-t border-line pt-5; }
+  .editor-actions { @apply shrink-0 bg-white px-7 py-4; }
+  #save-hint { @apply mr-auto text-xs text-muted; }
+  #delete-dialog, #import-dialog { width: min(480px, calc(100vw - 32px)); padding: 28px; }
+  #delete-dialog p, #import-dialog p { @apply my-4; overflow-wrap: anywhere; }
+  @media (min-width: 900px) {
+    .capture-settings-grid { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+    .manual-folder-form { border-right: 1px solid #dae3ed; border-bottom: 0; }
+  }
+  @media (max-width: 1100px) { th, td { @apply px-3; } }
+  @media (max-width: 850px) {
+    table, tbody { display: block; }
+    thead { display: none; }
+    tr { @apply grid grid-cols-2 gap-x-6 gap-y-5 border-b border-line p-6; }
+    tr:last-child { border: 0; }
+    td { @apply block border-0 p-0; }
+    td::before { content: attr(data-label); display: block; @apply mb-2 text-xs font-medium text-muted; }
+    td:first-child, td:last-child { grid-column: 1/-1; }
+    td:first-child::before, td:last-child::before { display: none; }
+    .row-actions .edit-task { @apply m-0 w-auto min-w-20; }
+    .row-actions { @apply gap-2; }
+    .preferences { grid-template-columns: minmax(0, 1fr); }
+    .editor-body { grid-template-columns: minmax(0, 1fr) 230px; }
+    .editor-header { @apply px-5 pt-5; }
+    .editor-panels { @apply p-5; }
+    .task-summary { @apply px-4 py-6; }
+    .identity { @apply gap-4; }
+    .enable-option { @apply px-3; }
+    .enable-option small { max-width: 130px; }
+    .days { grid-template-columns: repeat(4, 1fr); }
+  }
+  @media (max-width: 650px) {
+    #editor { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 12px; }
+    #task-form { max-height: calc(100dvh - 18px); }
+    .editor-header { @apply px-4 pt-4; }
+    .dialog-heading h2 { @apply text-xl; }
+    .dialog-heading p { display: none; }
+    .identity { @apply mt-3 grid-cols-1 gap-0; }
+    .identity input:not([type=checkbox]) { @apply mb-3; }
+    .enable-option { @apply mb-2 border-0 bg-transparent p-0 text-xs; }
+    .enable-option small { display: none; }
+    .editor-tabs { @apply gap-0; }
+    .editor-tabs button { @apply min-w-0 flex-1 whitespace-normal px-2 text-xs; }
+    .editor-body { display: block; }
+    .editor-panels { @apply px-4 py-5; }
+    .task-summary { @apply border-l-0 border-t border-line px-4 py-5; }
+    .task-summary dl { @apply grid gap-2.5; grid-template-columns: 80px minmax(0, 1fr); }
+    .task-summary dt, .task-summary dd { margin: 0; }
+    .summary-heading { @apply mr-3 mb-0 inline-flex; }
+    .editor-actions { @apply px-4 py-3; }
+    #save-hint { font-size: 12px; line-height: 1.4; max-width: 120px; }
+    .editor-actions button { @apply px-3; }
+    .days { grid-template-columns: repeat(7, 1fr); }
+    .days label { @apply flex-col-reverse gap-1.5 px-0.5 text-xs; }
+    .field-heading { @apply gap-1; }
+  }
+  @media (max-width: 450px) {
+    h1 { @apply text-xl; }
+    h2 { @apply text-xl; }
+    .capture-bar { @apply px-4; }
+    .capture-actions button { @apply px-3 text-xs; }
+    .capture-settings > summary { @apply px-4; }
+    .manual-folder-form, .shortcut-form { @apply p-4; }
+    .brand { @apply gap-3; }
+    .brand .camera { transform: scale(.8); margin-right: -4px; }
+    .toolbar { @apply gap-2; }
+    .toolbar button { @apply px-3 text-xs; }
+    #status { @apply px-2; font-size: 11px; }
+    .language-option { @apply w-full; }
+    tr { @apply gap-x-4 px-4 py-5; }
+    .row-actions button { @apply min-h-10 px-3; }
+    .preferences { @apply p-5; }
+  }
+}

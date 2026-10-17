@@ -1,0 +1,1695 @@
+diff --git a/readme.md b/readme.md
+index f11d31a..60e20e6 100644
+--- a/readme.md
++++ b/readme.md
+@@ -14,8 +14,8 @@ A lightweight Windows 10 tray and native macOS menu-bar application for running
+ - Keep idle CPU and memory usage low through a single event-driven scheduler.
+ - Store all configuration in a human-editable JSON file.
+ - Collect application events and errors in bounded local diagnostic logs.
+-- Provide an optional static, offline HTML editor without running a web server.
+-- Remain portable: no installer, administrator rights, telemetry, or network access.
++- Provide a local HTML editor, with a Windows app connection for native folder selection.
++- Remain portable: no installer, administrator rights, telemetry, or external network access.
+ 
+ ## Intended platform
+ 
+@@ -46,7 +46,7 @@ Requires **macOS 14 Sonoma or newer**, on Intel or Apple Silicon. The Mac app do
+ 
+ 3. Click the camera icon in the menu bar and choose **Grant Screen Recording Access**. Enable Scheduled Screenshot in System Settings → Privacy & Security → **Screen Recording** (or **Screen & System Audio Recording**, depending on macOS version). Restart the app if macOS asks you to.
+ 4. Choose **Open Settings Folder** to locate `settings.json`, then **Configure in Browser** to open the offline editor. In the editor, open that settings file.
+-5. Add or edit a task, enable it, and save. The initial task is disabled. If the browser downloads a replacement `settings.json`, copy it over the original in the settings folder. Valid changes apply automatically.
++5. Use **Open settings** in Chrome or Edge to open the current `settings.json`, add or edit a task, enable it, and click **Save changes** to update that same file. The initial task is disabled. Valid changes apply automatically. **Download JSON** separately exports a copy.
+ 6. Choose **Capture Now** and your task to capture immediately, then leave the app running for scheduled captures. Use **Pause All** to pause scheduling or **Quit Scheduled Screenshot** to close the app.
+ 
+ Default Mac locations:
+@@ -64,8 +64,8 @@ Relative output and log paths resolve from the settings folder. To start automat
+ 1. Download the portable `ScheduledScreenshot-win-x64.zip` or build it using the instructions below.
+ 2. Extract every file to a writable directory, such as `%LOCALAPPDATA%\ScheduledScreenshot`. Do not run the executable from inside the ZIP.
+ 3. Run `ScheduledScreenshot.exe`. Windows may place its icon in the notification-area overflow menu.
+-4. Right-click the tray icon and select **Configure in Browser**. The editor is a local HTML file and does not start a web server or use the network.
+-5. In the editor, open the `settings.json` created beside the executable, add or edit a task, enable it, and save. If the browser downloads a replacement file, copy it over the original `settings.json`.
++4. Right-click the tray icon and select **Configure in Browser**. The app serves the editor on `127.0.0.1` so its **Browse...** button can use Windows' folder picker. This connection is local to your computer and stops when the app exits.
++5. In Chrome or Edge, use **Open settings** to select the `settings.json` created beside the executable, add or edit a task, enable it, and click **Save changes**. This updates the opened file directly. **Download JSON** separately exports a copy.
+ 6. Leave the application running. Valid configuration changes are detected automatically, and enabled tasks start on their next scheduled occurrence.
+ 
+ Use **Capture Now** from the tray menu to test a task immediately. By default, screenshots are written under `%USERPROFILE%\Pictures\Scheduled Screenshots`, grouped into date directories, and diagnostic logs are stored in the `logs` directory beside the executable. Both locations can be changed in `settings.json`.
+@@ -144,17 +144,25 @@ Key rules:
+ - Logging levels are `error`, `info`, and `debug`; `info` is the default.
+ - Unknown future properties are tolerated, but invalid required values reject the edit.
+ 
+-The static configuration editor will load a user-selected `settings.json`. In browsers that support direct file access it can save in place; otherwise, it downloads a replacement file. **Edit JSON** opens the file in Notepad on Windows or the associated editor on macOS.
++The static configuration editor loads a user-selected `settings.json`. **Save changes** only updates the file selected through **Open settings**, using the browser's file-write permission; it never downloads a replacement. If no writable file is open, the editor explains how to open one in a supported browser such as Chrome or Edge. **Download JSON** is a separate export action. **Edit JSON** opens the file in Notepad on Windows or the associated editor on macOS.
++
++If the application or another editor changes the opened file, **Save changes** refuses to overwrite those changes and keeps your draft in the page. Use **Download JSON** to keep a copy of your draft, then **Open settings** to reload the current file before editing again. Imported settings are checked for valid field types before they replace the current draft.
++
++On Windows, open the editor through the running app's **Configure in Browser** menu. Beside **Output folder**, click **Browse...**, choose a folder in the Explorer-style dialog, and click **Select Folder**. Its full path fills the field automatically. Click **Save changes** to update the opened `settings.json`. Cancelling leaves the current output folder unchanged.
++
++Opening `config-editor.html` directly, or using the macOS app, keeps the standalone editor behavior: browsers hide full filesystem paths, so the picker asks you to paste the full path. For automatic selection on Windows, use the tray menu rather than a previously opened standalone page. The Windows connection binds only to loopback and requires a per-session token for folder selection; it does not expose file-writing endpoints.
+ 
+ ## Scheduling behavior
+ 
+ - All tasks share one scheduler and one one-shot timer.
+ - Interval cadence follows scheduled timestamps rather than capture completion.
++- Each occurrence runs only when its scheduled time has arrived; nearby task timestamps do not cause early or duplicate captures.
+ - Tasks due at the same second are grouped by output folder, filename template, format, quality, and cursor preference.
+ - Tasks with identical capture settings share one physical capture.
+ - Different capture groups are processed sequentially.
+ - If a new occurrence becomes due while a capture batch is active, that occurrence is skipped rather than queued.
+ - Missed occurrences during shutdown, sleep, workstation lock, or system-clock changes are not replayed.
++- Past stop times remain valid settings. The scheduler disables expired tasks, including when several expire together or the application restarts after their deadlines.
+ - The lock screen, secure desktop, and disconnected sessions are never captured.
+ 
+ A one-second task can create 86,400 images per monitor per day. The editor will warn about high-frequency schedules, but it will not silently impose a longer interval.
+@@ -230,11 +238,35 @@ The Linux container cross-compiles the .NET Framework application and executes e
+ 
+ ### Native Windows build and tests
+ 
+-With the .NET 10 SDK or Visual Studio installed:
++Install the **.NET 10 SDK**, then open PowerShell in the repository root (the folder containing `ScreenCapture.sln`). Build the Windows app and test assembly with:
++
++```powershell
++dotnet build ScreenCapture.sln -c Release -p:Platform=x64
++```
++
++The build restores dependencies automatically. The Windows executable is written to:
++
++```text
++src\ScheduledScreenshot\bin\x64\Release\net48\ScheduledScreenshot.exe
++```
++
++Launch it from PowerShell:
++
++```powershell
++.\src\ScheduledScreenshot\bin\x64\Release\net48\ScheduledScreenshot.exe
++```
++
++To distribute the portable app, copy or ZIP the **entire `net48` output folder**, including `config-editor.html`, rather than copying only the executable. The destination Windows computer needs .NET Framework 4.8 to run the app; it does not need the .NET 10 SDK.
++
++If the SDK was installed temporarily at `%TEMP%\scheduled-screenshot-dotnet-sdk` instead of added to `PATH`, use its executable directly:
++
++```powershell
++& "$env:TEMP\scheduled-screenshot-dotnet-sdk\dotnet.exe" build ScreenCapture.sln -c Release -p:Platform=x64
++```
++
++After building, run the unit tests:
+ 
+ ```powershell
+-dotnet restore ScreenCapture.sln
+-dotnet build ScreenCapture.sln --configuration Release --no-restore --property:Platform=x64
+ dotnet test tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj --configuration Release --no-build --property:Platform=x64
+ ```
+ 
+@@ -255,6 +287,22 @@ The smoke test verifies:
+ 
+ The smoke configuration contains no enabled capture tasks, so this check does not take a screenshot or replace the Windows monitor/session acceptance tests. Temporary files and processes are cleaned up even when the test fails.
+ 
++On an unlocked interactive Windows desktop, include `-Capture` to also run enabled one-second tasks and verify that JPEG and PNG screenshots are saved for every monitor and the tasks stop after their capture count. It also checks that two expired tasks are disabled without capturing. Images are stored in the temporary test directory and deleted afterward:
++
++```powershell
++.\scripts\test-production.ps1 -Capture
++```
++
++Exit the tray app before running the production smoke test because it checks the single-instance guard. To check the built scheduler and capture services while another tray instance is running, use this isolated regression harness in Windows PowerShell:
++
++```powershell
++$runtimeHarness = Join-Path $env:TEMP ('ScheduledScreenshot-runtime-' + [Guid]::NewGuid().ToString('N') + '.exe')
++Add-Type -Path tests/cases/scheduler/RuntimeHarness.cs -ReferencedAssemblies System.Drawing,System.Windows.Forms,System.Core -OutputAssembly $runtimeHarness -OutputType ConsoleApplication
++& $runtimeHarness (Resolve-Path src/ScheduledScreenshot/bin/x64/Release/net48/ScheduledScreenshot.exe).Path
++```
++
++The harness checks simultaneous expiration, real JPEG/PNG captures, count completion, and settings persistence after restart. It uses a unique temporary settings directory and deletes its screenshots afterward.
++
+ To test an already-built production ZIP, use the same mode as CI:
+ 
+ ```powershell
+diff --git a/scripts/test-production.ps1 b/scripts/test-production.ps1
+index b557cef..746f745 100644
+--- a/scripts/test-production.ps1
++++ b/scripts/test-production.ps1
+@@ -1,7 +1,8 @@
+ [CmdletBinding()]
+ param(
+     [switch]$NoBuild,
+-    [string]$PackagePath
++    [string]$PackagePath,
++    [switch]$Capture
+ )
+ 
+ $ErrorActionPreference = 'Stop'
+@@ -73,8 +74,49 @@ try {
+     Assert-Condition (Test-Path -LiteralPath $executablePath -PathType Leaf) 'The package does not contain ScheduledScreenshot.exe.'
+     Assert-Condition (Test-Path -LiteralPath $editorPath -PathType Leaf) 'The package does not contain config-editor.html.'
+ 
+-    $primaryProcess = Start-Process -FilePath $executablePath -ArgumentList '--smoke-test' -WorkingDirectory $extractedDirectory -PassThru
+     $settingsPath = Join-Path $extractedDirectory 'settings.json'
++    if ($Capture) {
++        # Requires an unlocked interactive Windows desktop. All images stay in the temporary directory.
++        $tasks = @('jpeg', 'png') | ForEach-Object {
++            @{
++                id = [Guid]::NewGuid().ToString()
++                name = "Scheduled $_ smoke capture"
++                enabled = $true
++                capture = @{
++                    outputFolder = "captures\$_"
++                    fileNameTemplate = '{timestamp}_{displayIndex}'
++                    imageFormat = $_
++                    jpegQuality = 85
++                    includeCursor = $false
++                }
++                schedule = @{
++                    type = 'interval'
++                    intervalSeconds = 1
++                    weekdays = @('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
++                    activeHoursEnabled = $false
++                }
++                stopCondition = @{ mode = 'count'; captureCount = 1 }
++            }
++        }
++        # Two overdue tasks must not invalidate startup or prevent one another from ending.
++        foreach ($index in @(1, 2)) {
++            $tasks += @{
++                id = [Guid]::NewGuid().ToString()
++                name = "Expired task $index"
++                enabled = $true
++                capture = @{ outputFolder = "captures\expired-$index" }
++                schedule = @{ type = 'interval'; intervalSeconds = 1 }
++                stopCondition = @{ mode = 'at'; endAtLocal = '2020-01-01T12:00:00' }
++            }
++        }
++        @{
++            schemaVersion = 1
++            paused = $false
++            logging = @{ level = 'debug'; directory = 'logs'; maxFileSizeMb = 5; retainedFiles = 5 }
++            tasks = @($tasks)
++        } | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $settingsPath -Encoding UTF8
++    }
++    $primaryProcess = Start-Process -FilePath $executablePath -ArgumentList '--smoke-test' -WorkingDirectory $extractedDirectory -WindowStyle Hidden -PassThru
+     $logDirectory = Join-Path $extractedDirectory 'logs'
+     $startupDeadline = [DateTime]::UtcNow.AddSeconds(6)
+     do {
+@@ -90,7 +132,7 @@ try {
+     $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
+     Assert-Condition ($settings.schemaVersion -eq 1) 'The generated production settings have an unexpected schema version.'
+ 
+-    $secondProcess = Start-Process -FilePath $executablePath -ArgumentList '--smoke-test' -WorkingDirectory $extractedDirectory -PassThru -Wait
++    $secondProcess = Start-Process -FilePath $executablePath -ArgumentList '--smoke-test' -WorkingDirectory $extractedDirectory -WindowStyle Hidden -PassThru -Wait
+     Assert-Condition ($secondProcess.ExitCode -eq 2) "A second instance returned $($secondProcess.ExitCode) instead of 2."
+     $primaryProcess.Refresh()
+     Assert-Condition (-not $primaryProcess.HasExited) 'The primary instance stopped after the single-instance check.'
+@@ -100,6 +142,36 @@ try {
+     Assert-Condition (Test-LogEvent -Directory $logDirectory -EventId 'CONFIG_ACCEPTED') 'The production run did not accept its configuration.'
+     Assert-Condition (Test-LogEvent -Directory $logDirectory -EventId 'APP_EXIT') 'The production run did not log a clean shutdown.'
+ 
++    if ($Capture) {
++        Add-Type -AssemblyName System.Drawing
++        Add-Type -AssemblyName System.Windows.Forms
++        $monitorCount = [System.Windows.Forms.Screen]::AllScreens.Count
++        foreach ($format in @('jpeg', 'png')) {
++            $extension = if ($format -eq 'jpeg') { '*.jpg' } else { '*.png' }
++            $files = @(Get-ChildItem -LiteralPath (Join-Path $extractedDirectory "captures\$format") -Filter $extension -File -Recurse -ErrorAction SilentlyContinue)
++            Assert-Condition ($files.Count -eq $monitorCount) "Scheduled $format task did not write exactly one image per monitor."
++            foreach ($file in $files) {
++                $image = [System.Drawing.Image]::FromFile($file.FullName)
++                try {
++                    Assert-Condition ($image.Width -gt 0 -and $image.Height -gt 0) "Invalid screenshot: $($file.Name)"
++                }
++                finally {
++                    $image.Dispose()
++                }
++            }
++        }
++        $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
++        Assert-Condition (@($settings.tasks | Where-Object { $_.enabled }).Count -eq 0) 'Scheduled capture tasks did not finish their capture counts.'
++        foreach ($index in @(1, 2)) {
++            $expiredFiles = @(Get-ChildItem -LiteralPath (Join-Path $extractedDirectory "captures\expired-$index") -File -Recurse -ErrorAction SilentlyContinue)
++            Assert-Condition ($expiredFiles.Count -eq 0) 'An expired task captured a screenshot.'
++        }
++        foreach ($eventId in @('MONITOR_CAPTURE_FAILED', 'CAPTURE_PROFILE_FAILED', 'SCHEDULER_ERROR')) {
++            Assert-Condition (-not (Test-LogEvent -Directory $logDirectory -EventId $eventId)) "Capture run logged $eventId."
++        }
++        Write-Host 'Scheduled capture passed: JPEG and PNG images decoded, one image per monitor, and count-limited tasks completed.'
++    }
++
+     Write-Host 'Production smoke test passed: build/package, portable startup, configuration, logging, single-instance guard, and clean shutdown.'
+ }
+ finally {
+diff --git a/src/ScheduledScreenshot.Mac/Configuration.swift b/src/ScheduledScreenshot.Mac/Configuration.swift
+index e14b791..4bab672 100644
+--- a/src/ScheduledScreenshot.Mac/Configuration.swift
++++ b/src/ScheduledScreenshot.Mac/Configuration.swift
+@@ -351,8 +351,8 @@ enum SettingsValidator {
+             result.errors.append("\(prefix).stopCondition.mode must be none, at, duration, or count.")
+         }
+         if stop.mode == "at" {
+-            guard let end = parseLocalDateTime(stop.endAtLocal), !enabled || end > Date() else {
+-                result.errors.append("\(prefix).stopCondition.endAtLocal must be a future yyyy-MM-ddTHH:mm:ss value for an enabled task.")
++            guard parseLocalDateTime(stop.endAtLocal) != nil else {
++                result.errors.append("\(prefix).stopCondition.endAtLocal must be a valid yyyy-MM-ddTHH:mm:ss value.")
+                 return
+             }
+         }
+diff --git a/src/ScheduledScreenshot.Mac/Scheduler.swift b/src/ScheduledScreenshot.Mac/Scheduler.swift
+index 96e4953..b215160 100644
+--- a/src/ScheduledScreenshot.Mac/Scheduler.swift
++++ b/src/ScheduledScreenshot.Mac/Scheduler.swift
+@@ -167,6 +167,7 @@ final class Scheduler {
+     private var captureTask: Task<Void, Never>?
+     private var observerToken: UUID?
+     private var captureInProgress = false
++    private var pendingOccurrences: [TaskOccurrence] = []
+     private var stopped = false
+ 
+     var onChange: (() -> Void)?
+@@ -198,6 +199,7 @@ final class Scheduler {
+         guard !stopped else { return }
+         timer?.invalidate(); timer = nil
+         let now = Date()
++        pendingOccurrences.removeAll()
+         var earliestOccurrence: TaskOccurrence?
+         var earliestDeadline: Date?
+         for task in settings.tasks where task.enabled {
+@@ -206,8 +208,10 @@ final class Scheduler {
+             if let deadline = ScheduleCalculator.stopDate(for: task, state: runtime),
+                earliestDeadline == nil || deadline < earliestDeadline! { earliestDeadline = deadline }
+             if !settings.paused && available,
+-               let occurrence = ScheduleCalculator.nextOccurrence(for: task, state: runtime, after: now),
+-               earliestOccurrence == nil || occurrence.due < earliestOccurrence!.due { earliestOccurrence = occurrence }
++               let occurrence = ScheduleCalculator.nextOccurrence(for: task, state: runtime, after: now) {
++                pendingOccurrences.append(occurrence)
++                if earliestOccurrence == nil || occurrence.due < earliestOccurrence!.due { earliestOccurrence = occurrence }
++            }
+         }
+         nextDate = earliestOccurrence?.due
+         nextName = earliestOccurrence?.task.name
+@@ -293,6 +297,9 @@ final class Scheduler {
+         guard !stopped else { return }
+         timer?.invalidate(); timer = nil
+         let now = Date()
++        // Remove due occurrences before configuration callbacks can reschedule the timer.
++        let armedDue = pendingOccurrences.filter { $0.due <= now }
++        pendingOccurrences.removeAll { $0.due <= now }
+         let expired = settings.tasks.filter { task in
+             guard task.enabled, let runtime = state.tasks[stateKey(task.id)] else { return false }
+             return runtime.reachedCaptureLimit(for: task)
+@@ -307,13 +314,7 @@ final class Scheduler {
+         let expiredIDs = Set(expired.map { $0.id.lowercased() })
+         var due: [TaskOccurrence] = []
+         if !settings.paused && available {
+-            for task in settings.tasks where task.enabled && !expiredIDs.contains(task.id.lowercased()) {
+-                guard let runtime = state.tasks[stateKey(task.id)],
+-                      let occurrence = ScheduleCalculator.nextOccurrence(for: task, state: runtime,
+-                                                                         after: now.addingTimeInterval(-0.5)),
+-                      occurrence.due <= now.addingTimeInterval(0.15) else { continue }
+-                due.append(occurrence)
+-            }
++            due = armedDue.filter { !expiredIDs.contains($0.task.id.lowercased()) }
+         }
+         recordFixedOccurrences(due)
+         if !due.isEmpty {
+diff --git a/src/ScheduledScreenshot/Services/CaptureCoordinator.cs b/src/ScheduledScreenshot/Services/CaptureCoordinator.cs
+index 6dff5b1..ead8d49 100644
+--- a/src/ScheduledScreenshot/Services/CaptureCoordinator.cs
++++ b/src/ScheduledScreenshot/Services/CaptureCoordinator.cs
+@@ -126,8 +126,9 @@ namespace ScheduledScreenshot.Services
+                     using (var bitmap = new Bitmap(screen.Bounds.Width, screen.Bounds.Height, PixelFormat.Format32bppArgb))
+                     using (var graphics = Graphics.FromImage(bitmap))
+                     {
++                        // CopyFromScreen validates named enum values; combined raster flags are rejected.
+                         graphics.CopyFromScreen(screen.Bounds.Left, screen.Bounds.Top, 0, 0, screen.Bounds.Size,
+-                            CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
++                            CopyPixelOperation.SourceCopy);
+                         if (task.capture.includeCursor)
+                         {
+                             CursorRenderer.Draw(graphics, screen.Bounds);
+diff --git a/src/ScheduledScreenshot/Services/SchedulerService.cs b/src/ScheduledScreenshot/Services/SchedulerService.cs
+index 00aee72..77b865e 100644
+--- a/src/ScheduledScreenshot/Services/SchedulerService.cs
++++ b/src/ScheduledScreenshot/Services/SchedulerService.cs
+@@ -20,6 +20,7 @@ namespace ScheduledScreenshot.Services
+         private bool _captureAllowed = true;
+         private bool _disposed;
+         private TaskOccurrence _nextOccurrence;
++        private readonly PendingOccurrences _pendingOccurrences = new PendingOccurrences();
+         private DateTimeOffset? _nextDeadline;
+ 
+         public SchedulerService(
+@@ -217,6 +218,7 @@ namespace ScheduledScreenshot.Services
+             if (_disposed) return;
+             _timer.Change(Timeout.Infinite, Timeout.Infinite);
+             _nextOccurrence = null;
++            _pendingOccurrences.Clear();
+             _nextDeadline = null;
+ 
+             foreach (var task in _settings.tasks.Where(item => item.enabled))
+@@ -242,6 +244,7 @@ namespace ScheduledScreenshot.Services
+                 if (!_settings.paused && _captureAllowed)
+                 {
+                     var occurrence = ScheduleCalculator.GetNextOccurrence(task, state, nowUtc);
++                    if (occurrence != null) _pendingOccurrences.Add(occurrence);
+                     if (occurrence != null && (_nextOccurrence == null || occurrence.DueUtc < _nextOccurrence.DueUtc))
+                     {
+                         _nextOccurrence = occurrence;
+@@ -324,19 +327,13 @@ namespace ScheduledScreenshot.Services
+                     StringComparer.OrdinalIgnoreCase);
+ 
+                 var expiredIds = new HashSet<string>(expiredTasks.Select(task => task.id), StringComparer.OrdinalIgnoreCase);
+-                due = new List<TaskOccurrence>();
++                // Consume armed occurrences, rather than recalculating from a time window.
++                due = _pendingOccurrences.TakeDue(nowUtc);
+                 if (!_settings.paused && _captureAllowed)
+                 {
+-                    foreach (var task in _settings.tasks.Where(item => item.enabled && !expiredIds.Contains(item.id)))
+-                    {
+-                        if (!_state.tasks.TryGetValue(task.id, out var runtime)) continue;
+-                        var occurrence = ScheduleCalculator.GetNextOccurrence(task, runtime, nowUtc.AddMilliseconds(-500));
+-                        if (occurrence != null && occurrence.DueUtc <= nowUtc.AddMilliseconds(150))
+-                        {
+-                            due.Add(occurrence);
+-                        }
+-                    }
++                    due.RemoveAll(item => expiredIds.Contains(item.Task.id));
+                 }
++                else due.Clear();
+             }
+ 
+             foreach (var task in expiredTasks)
+diff --git a/src/ScheduledScreenshot/Services/SettingsValidator.cs b/src/ScheduledScreenshot/Services/SettingsValidator.cs
+index 5624827..eeb9660 100644
+--- a/src/ScheduledScreenshot/Services/SettingsValidator.cs
++++ b/src/ScheduledScreenshot/Services/SettingsValidator.cs
+@@ -273,10 +273,9 @@ namespace ScheduledScreenshot.Services
+             if (stop.mode == "at")
+             {
+                 if (!TryParseLocalDateTime(stop.endAtLocal, out var end)
+-                    || TimeZoneInfo.Local.IsInvalidTime(DateTime.SpecifyKind(end, DateTimeKind.Unspecified))
+-                    || (enabled && end <= DateTime.Now))
++                    || TimeZoneInfo.Local.IsInvalidTime(DateTime.SpecifyKind(end, DateTimeKind.Unspecified)))
+                 {
+-                    result.Errors.Add(prefix + ".stopCondition.endAtLocal must be a future yyyy-MM-ddTHH:mm:ss value for an enabled task.");
++                    result.Errors.Add(prefix + ".stopCondition.endAtLocal must be a valid yyyy-MM-ddTHH:mm:ss value.");
+                 }
+             }
+             if (stop.mode == "duration" && (!stop.durationSeconds.HasValue || stop.durationSeconds < 1 || stop.durationSeconds > 31536000))
+diff --git a/src/ScheduledScreenshot/TrayApplicationContext.cs b/src/ScheduledScreenshot/TrayApplicationContext.cs
+index 9252b02..3928be6 100644
+--- a/src/ScheduledScreenshot/TrayApplicationContext.cs
++++ b/src/ScheduledScreenshot/TrayApplicationContext.cs
+@@ -6,6 +6,7 @@ using System.Globalization;
+ using System.IO;
+ using System.Linq;
+ using System.Threading;
++using System.Threading.Tasks;
+ using System.Windows.Forms;
+ using ScheduledScreenshot.Models;
+ using ScheduledScreenshot.Services;
+@@ -27,6 +28,7 @@ namespace ScheduledScreenshot
+         private readonly ToolStripMenuItem _captureNowItem;
+         private readonly ToolStripMenuItem _pauseItem;
+         private readonly ToolStripMenuItem _openOutputItem;
++        private EditorHost _editorHost;
+         private bool _exiting;
+ 
+         public TrayApplicationContext()
+@@ -90,6 +92,7 @@ namespace ScheduledScreenshot
+             Application.ThreadException -= OnThreadException;
+             AppDomain.CurrentDomain.UnhandledException -= OnUnhandledException;
+             _sessionMonitor.Dispose();
++            _editorHost?.Dispose();
+             _scheduler.Dispose();
+             _configuration.Dispose();
+             _logger.Dispose();
+@@ -110,7 +113,7 @@ namespace ScheduledScreenshot
+             menu.Items.Add(new ToolStripSeparator());
+ 
+             var configureItem = new ToolStripMenuItem("Configure in Browser");
+-            configureItem.Click += (sender, args) => OpenWithShell(Path.Combine(_applicationDirectory, "config-editor.html"));
++            configureItem.Click += (sender, args) => OpenEditor();
+             menu.Items.Add(configureItem);
+ 
+             var editItem = new ToolStripMenuItem("Edit JSON in Notepad");
+@@ -161,6 +164,47 @@ namespace ScheduledScreenshot
+             UpdateStatus();
+         }
+ 
++        private void OpenEditor()
++        {
++            try
++            {
++                if (_editorHost == null)
++                    _editorHost = new EditorHost(Path.Combine(_applicationDirectory, "config-editor.html"), ChooseOutputFolderAsync, _logger);
++                Process.Start(new ProcessStartInfo(_editorHost.Url) { UseShellExecute = true });
++            }
++            catch (Exception exception)
++            {
++                _logger.Error("EDITOR_OPEN_FAILED", "The local configuration editor could not be opened.", exception);
++                ShowWarning("Unable to open editor", exception.Message);
++            }
++        }
++
++        private Task<string> ChooseOutputFolderAsync()
++        {
++            var completion = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
++            _dispatcher.BeginInvoke((Action)(() =>
++            {
++                try
++                {
++                    if (_exiting) { completion.SetResult(null); return; }
++                    // A visible owner brings the Explorer-style picker in front of the browser.
++                    using (var owner = new Form
++                    {
++                        Text = "Screenshot output folder", ShowInTaskbar = false,
++                        StartPosition = FormStartPosition.CenterScreen, Size = new Size(1, 1),
++                        FormBorderStyle = FormBorderStyle.None, TopMost = true
++                    })
++                    {
++                        owner.Show();
++                        owner.Activate();
++                        completion.SetResult(FolderPicker.Show(owner));
++                    }
++                }
++                catch (Exception exception) { completion.SetException(exception); }
++            }));
++            return completion.Task;
++        }
++
+         private void CaptureNow(ScreenshotTaskSettings task)
+         {
+             ThreadPool.QueueUserWorkItem(_ =>
+diff --git a/src/ScheduledScreenshot/config-editor.html b/src/ScheduledScreenshot/config-editor.html
+index ee36e4d..a3d6842 100644
+--- a/src/ScheduledScreenshot/config-editor.html
++++ b/src/ScheduledScreenshot/config-editor.html
+@@ -3,7 +3,7 @@
+ <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'">
++  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'self'; font-src 'none'; base-uri 'none'; form-action 'none'">
+   <meta name="referrer" content="no-referrer">
+   <title>Scheduled Screenshot configuration</title>
+   <style>
+@@ -118,6 +118,12 @@
+     .empty strong { display: block; color: var(--ink); font: 600 24px Bahnschrift, sans-serif; margin-bottom: 7px; }
+     .file-state { color: var(--muted); font: 12px Consolas, monospace; margin-top: 10px; }
+     .task-tools { display: flex; gap: 6px; flex-wrap: wrap; }
++    .folder-input { display: flex; align-items: start; gap: 8px; }
++    .folder-input input { min-width: 0; flex: 1; }
++    .folder-input button { flex-shrink: 0; }
++    .folder-dialog { width: min(540px, calc(100% - 32px)); padding: 24px; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); }
++    .folder-dialog::backdrop { background: rgba(32, 38, 46, .4); }
++    .folder-dialog .actions { margin-top: 20px; }
+     @media (max-width: 900px) {
+       .shell { padding: 16px; }
+       .masthead { align-items: start; flex-direction: column; }
+@@ -145,7 +151,7 @@
+       <div>
+         <div class="eyebrow">Offline configuration</div>
+         <h1>Scheduled Screenshot</h1>
+-        <p class="subtitle">Shape capture tasks without starting a server or sending data anywhere.</p>
++        <p class="subtitle">Configure capture tasks locally. Your settings and screenshots stay on this computer.</p>
+       </div>
+       <div class="actions">
+         <button id="openButton" type="button">Open settings</button>
+@@ -174,17 +180,36 @@
+     <div class="file-state" id="fileState">Open the application's settings.json to edit it in place.</div>
+   </main>
+ 
++  <dialog id="folderDialog" class="folder-dialog" aria-labelledby="folderDialogTitle" aria-describedby="folderDialogNote">
++    <h2 id="folderDialogTitle">Screenshot output folder</h2>
++    <p id="folderDialogNote"></p>
++    <label for="folderFullPath">Full folder path</label>
++    <input id="folderFullPath" type="text" autocomplete="off" spellcheck="false" aria-describedby="folderPathHelp">
++    <div id="folderPathHelp" class="hint">Windows: copy the address bar in File Explorer (Ctrl+L, Ctrl+C). On Mac: use Finder's Copy as Pathname (Option+Command+C).</div>
++    <div class="actions">
++      <button id="cancelFolder" type="button">Cancel</button>
++      <button id="applyFolder" class="primary" type="button">Use folder</button>
++    </div>
++  </dialog>
++
+   <script>
+     'use strict';
+     const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+     const TOKENS = ['{timestamp}','{date}','{time}','{task}','{taskId}','{taskId8}','{display}','{displayIndex}'];
+     const FACTORS = { seconds: 1, minutes: 60, hours: 3600 };
+     let fileHandle = null;
++    let fileContents = null;
++    let fileRevision = 0;
++    let saveInProgress = false;
+     let fileName = 'settings.json';
+     let selected = 'application';
+     let intervalUnits = {};
+     let durationUnits = {};
+     let config = defaultConfig();
++    let folderTarget = null;
++    let folderPickerPending = false;
++    const folderToken = location.protocol === 'http:' && location.hostname === '127.0.0.1'
++      ? new URLSearchParams(location.hash.slice(1)).get('folderToken') : null;
+ 
+     function defaultConfig() {
+       return {
+@@ -220,22 +245,42 @@
+     }
+ 
+     function normalize(value) {
+-      const base = defaultConfig();
+-      const next = value && typeof value === 'object' ? value : base;
+-      next.schemaVersion = next.schemaVersion ?? 1;
+-      next.paused = !!next.paused;
+-      next.logging = Object.assign(base.logging, next.logging || {});
+-      next.tasks = Array.isArray(next.tasks) ? next.tasks : [];
+-      next.tasks.forEach(task => {
+-        task.capture = Object.assign(newTask().capture, task.capture || {});
+-        task.schedule = Object.assign(newTask().schedule, task.schedule || {});
+-        task.stopCondition = Object.assign(newTask().stopCondition, task.stopCondition || {});
+-        task.schedule.weekdays = Array.isArray(task.schedule.weekdays) ? task.schedule.weekdays : [];
+-        task.schedule.times = Array.isArray(task.schedule.times) ? task.schedule.times : [];
++      const next = normalizeObject(value, defaultConfig(), 'settings');
++      next.logging = normalizeObject(value.logging ?? {}, defaultConfig().logging, 'logging');
++      next.tasks = next.tasks.map((source, index) => {
++        const defaults = newTask();
++        const task = normalizeObject(source, defaults, `tasks[${index}]`);
++        for (const key of ['capture', 'schedule', 'stopCondition']) {
++          task[key] = normalizeObject(source[key] ?? {}, defaults[key], `tasks[${index}].${key}`);
++        }
++        for (const key of ['times', 'weekdays']) {
++          if (task.schedule[key].some(item => typeof item !== 'string')) throw new Error(`tasks[${index}].schedule.${key} must contain strings.`);
++        }
++        for (const key of ['durationSeconds', 'captureCount']) {
++          const number = task.stopCondition[key];
++          if (number !== null && !Number.isInteger(number)) throw new Error(`tasks[${index}].stopCondition.${key} must be an integer or null.`);
++        }
++        if (task.stopCondition.endAtLocal !== null && typeof task.stopCondition.endAtLocal !== 'string') throw new Error(`tasks[${index}].stopCondition.endAtLocal must be a string or null.`);
++        return task;
+       });
+       return next;
+     }
+ 
++    function normalizeObject(value, defaults, path) {
++      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(`${path} must be an object.`);
++      // Object spread preserves unknown fields without invoking __proto__ setters.
++      const result = { ...defaults, ...value };
++      for (const [key, expected] of Object.entries(defaults)) {
++        const actual = result[key];
++        if (expected === null) continue;
++        const valid = Array.isArray(expected) ? Array.isArray(actual)
++          : typeof expected === 'object' ? actual !== null && typeof actual === 'object' && !Array.isArray(actual)
++          : typeof actual === typeof expected && (typeof actual !== 'number' || Number.isFinite(actual));
++        if (!valid) throw new Error(`${path}.${key} has an invalid type.`);
++      }
++      return result;
++    }
++
+     function render() {
+       renderStats();
+       renderNav();
+@@ -255,7 +300,7 @@
+       nav.innerHTML = `<button class="nav-item ${selected === 'application' ? 'active' : ''}" data-select="application" type="button">
+         <span class="status-dot ${config.paused ? '' : 'on'}"></span><span>Application</span><span class="nav-meta">LOG</span></button>` +
+         config.tasks.map(task => `<button class="nav-item ${selected === task.id ? 'active' : ''}" data-select="${escapeHtml(task.id)}" type="button">
+-          <span class="status-dot ${task.enabled ? 'on' : ''}"></span><span>${escapeHtml(task.name)}</span><span class="nav-meta">${task.schedule.type === 'fixedOnce' ? 'ONCE' : task.schedule.type === 'fixed' ? 'FIX' : formatSeconds(task.schedule.intervalSeconds)}</span></button>`).join('');
++          <span class="status-dot ${task.enabled ? 'on' : ''}"></span><span>${escapeHtml(task.name)}</span><span class="nav-meta">${escapeHtml(task.schedule.type === 'fixedOnce' ? 'ONCE' : task.schedule.type === 'fixed' ? 'FIX' : formatSeconds(task.schedule.intervalSeconds))}</span></button>`).join('');
+     }
+ 
+     function renderPanel() {
+@@ -298,7 +343,7 @@
+       const highFrequency = task.enabled && schedule.type === 'interval' && schedule.intervalSeconds < 5;
+       return `<div class="panel-head"><div><h2>${escapeHtml(task.name)}</h2><p class="panel-note">${escapeHtml(task.id)}</p></div>
+         <div class="task-tools"><button type="button" data-action="up" class="icon" aria-label="Move task up">↑</button><button type="button" data-action="down" class="icon" aria-label="Move task down">↓</button><button type="button" data-action="duplicate">Duplicate</button><button type="button" data-action="delete" class="danger">Delete</button></div></div>
+-        ${highFrequency ? `<div class="warning"><strong>High-frequency capture.</strong> At ${schedule.intervalSeconds} second(s), this task can create ${Math.floor(86400 / schedule.intervalSeconds).toLocaleString()} images per monitor each day.</div>` : ''}
++        ${highFrequency ? `<div class="warning"><strong>High-frequency capture.</strong> At ${escapeHtml(schedule.intervalSeconds)} second(s), this task can create ${Math.floor(86400 / schedule.intervalSeconds).toLocaleString()} images per monitor each day.</div>` : ''}
+         <div class="section"><div class="grid">
+           ${textField('Task name','task-name',task.name)}
+           <div class="field"><span class="label">State</span><label class="check-row"><input type="checkbox" data-task="enabled" ${task.enabled ? 'checked' : ''}> Enabled</label></div>
+@@ -323,7 +368,10 @@
+           <div class="field"><span class="label">Pointer</span><label class="check-row"><input type="checkbox" data-task="includeCursor" ${capture.includeCursor ? 'checked' : ''}> Include cursor</label></div>
+         </div></div>
+         <div class="section"><h3>Storage</h3><div class="grid">
+-          ${textField('Output folder','task-capture-outputFolder',capture.outputFolder,'wide')}
++          <div class="field wide"><label for="task-capture-outputFolder">Output folder</label>
++            <div class="folder-input"><input id="task-capture-outputFolder" type="text" value="${escapeHtml(capture.outputFolder)}" data-bind="task-capture-outputFolder" aria-describedby="outputFolderHint">
++              <button id="browseOutputFolder" type="button">Browse...</button></div>
++            <div id="outputFolderHint" class="hint">${folderToken ? 'Browse selects a folder on this computer and fills its full path automatically.' : 'For automatic folder selection on Windows, open this editor from the tray menu: Configure in Browser.'}</div></div>
+           <div class="field wide"><label for="filenameTemplate">Filename template</label><input id="filenameTemplate" type="text" value="${escapeHtml(capture.fileNameTemplate)}" data-task="fileNameTemplate">
+             <div class="token-row">${TOKENS.map(token => `<button type="button" data-token="${token}">${token}</button>`).join('')}</div>
+             <div class="preview">${escapeHtml(previewFilename(task))}</div><div class="hint">The extension is added automatically. Include {display} or {displayIndex}.</div></div>
+@@ -440,7 +488,7 @@
+         if (['fixed','fixedOnce'].includes(task.schedule.type) && (!task.schedule.times.length || task.schedule.times.some(t => !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(t)))) errors.push(`${prefix} fixed times must use HH:mm:ss.`);
+         if (['fixed','fixedOnce'].includes(task.schedule.type) && new Set(task.schedule.times).size !== task.schedule.times.length) errors.push(`${prefix} fixed times must be unique.`);
+         if (task.schedule.activeHoursEnabled && (!validClock(task.schedule.activeStart) || !validClock(task.schedule.activeEnd) || task.schedule.activeStart >= task.schedule.activeEnd)) errors.push(`${prefix} active hours must be same-day and start before end.`);
+-        if (task.stopCondition.mode === 'at' && (!task.stopCondition.endAtLocal || (task.enabled && new Date(task.stopCondition.endAtLocal) <= new Date()))) errors.push(`${prefix} needs a future exact end time.`);
++        if (task.stopCondition.mode === 'at' && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(task.stopCondition.endAtLocal || '') || !Number.isFinite(Date.parse(task.stopCondition.endAtLocal)))) errors.push(`${prefix} needs a valid exact end time.`);
+         if (task.stopCondition.mode === 'duration' && (task.stopCondition.durationSeconds < 1 || task.stopCondition.durationSeconds > 31536000)) errors.push(`${prefix} duration must be 1 second through 365 days.`);
+         if (task.stopCondition.mode === 'count' && (!Number.isInteger(task.stopCondition.captureCount) || task.stopCondition.captureCount < 1 || task.stopCondition.captureCount > 2147483647)) errors.push(`${prefix} capture count must be a whole number from 1 through 2,147,483,647.`);
+         if (!['jpeg','png'].includes(task.capture.imageFormat)) errors.push(`${prefix} image format is invalid.`);
+@@ -461,41 +509,143 @@
+       if (errors.length) box.scrollIntoView({ behavior: 'auto', block: 'start' });
+     }
+ 
++    async function browseOutputFolder() {
++      const task = config.tasks.find(item => item.id === selected);
++      if (!task || folderPickerPending) return;
++      folderPickerPending = true;
++      if (folderToken) {
++        const button = document.getElementById('browseOutputFolder');
++        if (button) { button.disabled = true; button.textContent = 'Choosing...'; }
++        try {
++          const response = await fetch('/api/output-folder', { method: 'POST', headers: { 'X-Editor-Token': folderToken } });
++          if (!response.ok) throw new Error('The folder picker is unavailable. Reopen Configure in Browser from the running tray app.');
++          const result = await response.json();
++          if (typeof result.path === 'string' && result.path && config.tasks.includes(task)) {
++            task.capture.outputFolder = result.path;
++            if (selected === task.id) renderPanel();
++            document.getElementById('fileState').textContent = 'Output folder updated. Save changes to apply it to the screenshot application.';
++          }
++        } catch (error) {
++          showErrors(['Unable to browse folders. Keep the tray app running and reopen Configure in Browser. ' + error.message]);
++        } finally {
++          folderPickerPending = false;
++          if (button?.isConnected) { button.disabled = false; button.textContent = 'Browse...'; }
++        }
++        return;
++      }
++      let folderName = null;
++      let pickerUnavailable = typeof window.showDirectoryPicker !== 'function';
++      try {
++        if (!pickerUnavailable) {
++          const directory = await window.showDirectoryPicker({ id: 'screenshot-output', mode: 'read', startIn: 'pictures' });
++          folderName = directory.name;
++        }
++      } catch (error) {
++        if (error.name === 'AbortError') return;
++        if (error.name === 'SecurityError' || error.name === 'NotAllowedError' || error.name === 'NotSupportedError') pickerUnavailable = true;
++        else { showErrors(['Unable to choose an output folder: ' + error.message]); return; }
++      } finally {
++        folderPickerPending = false;
++      }
++      // A directory handle exposes its name, not the absolute path needed by the native app.
++      // Never use directory.name as outputFolder: that would resolve beside settings.json.
++      if (!config.tasks.includes(task)) return;
++      folderTarget = task;
++      document.getElementById('folderDialogNote').textContent = pickerUnavailable
++        ? 'Folder browsing is unavailable in this browser. Open File Explorer or Finder, choose your folder, and paste its full path below.'
++        : `Selected folder: ${folderName}. Paste its full path below so the screenshot application can find it.`;
++      const input = document.getElementById('folderFullPath');
++      input.value = pickerUnavailable ? task.capture.outputFolder : '';
++      input.setCustomValidity('');
++      document.getElementById('folderDialog').showModal();
++      input.focus();
++    }
++
++    function applyOutputFolder() {
++      const input = document.getElementById('folderFullPath');
++      const path = input.value.trim().replace(/^"(.*)"$/, '$1');
++      const fullPath = /^(?:[A-Za-z]:[\\/]|\\\\[^\\]+\\[^\\]+|\/(?!\/)|~[\\/]|%[^%]+%[\\/])/.test(path);
++      if (!fullPath || /[\x00-\x1f]/.test(path)) {
++        input.setCustomValidity('Enter a full folder path, such as C:\\Users\\YourName\\Pictures or /Users/YourName/Pictures.');
++        input.reportValidity();
++        return;
++      }
++      if (folderTarget && config.tasks.includes(folderTarget)) {
++        folderTarget.capture.outputFolder = path;
++        if (selected === folderTarget.id) renderPanel();
++        document.getElementById('fileState').textContent = 'Output folder updated. Save changes to apply it to the screenshot application.';
++      }
++      document.getElementById('folderDialog').close();
++      document.getElementById('browseOutputFolder')?.focus();
++    }
++
+     async function openSettings() {
+       try {
+-        if ('showOpenFilePicker' in window) {
+-          [fileHandle] = await window.showOpenFilePicker({ multiple: false, types: [{ description: 'Scheduled Screenshot settings', accept: { 'application/json': ['.json'] } }] });
+-          const file = await fileHandle.getFile();
+-          await loadFile(file);
++        if (typeof window.showOpenFilePicker === 'function') {
++          const [handle] = await window.showOpenFilePicker({ multiple: false, types: [{ description: 'Scheduled Screenshot settings', accept: { 'application/json': ['.json'] } }] });
++          const file = await handle.getFile();
++          await loadFile(file, handle);
+         } else {
+           document.getElementById('fileInput').click();
+         }
+       } catch (error) { if (error.name !== 'AbortError') showErrors([error.message]); }
+     }
+ 
+-    async function loadFile(file) {
++    async function loadFile(file, handle = null) {
+       try {
+-        config = normalize(JSON.parse(await file.text()));
++        const contents = await file.text();
++        const loaded = normalize(JSON.parse(contents));
++        config = loaded;
++        fileHandle = handle;
++        fileContents = contents;
++        fileRevision++;
+         fileName = file.name;
+         selected = 'application';
+         showErrors([]);
+-        document.getElementById('fileState').textContent = `${file.name} loaded. The tray application will validate changes again after save.`;
++        document.getElementById('fileState').textContent = handle
++          ? `${file.name} loaded. Save changes will update this file directly.`
++          : `${file.name} loaded. Editing without write access. To save directly, use Open settings in a browser with file-write support, such as Chrome or Edge.`;
+         render();
+       } catch (error) { showErrors(['Unable to load JSON: ' + error.message]); }
+     }
+ 
+     async function saveChanges() {
++      if (saveInProgress) return;
+       const errors = validate(); showErrors(errors); if (errors.length) return;
++      if (!fileHandle || typeof fileHandle.createWritable !== 'function') {
++        showErrors([typeof window.showOpenFilePicker === 'function'
++          ? 'Use Open settings to open the current settings.json with write access, then make your edits and save. Save changes only updates the opened file.'
++          : 'This browser cannot update local files directly. Open this editor in Chrome or Edge, then use Open settings to select the current settings.json. Download JSON is available separately.']);
++        return;
++      }
+       const json = JSON.stringify(config, null, 2) + '\n';
+-      if (fileHandle && fileHandle.createWritable) {
+-        try {
+-          const writable = await fileHandle.createWritable(); await writable.write(json); await writable.close();
+-          document.getElementById('fileState').textContent = `${fileName} saved. The tray application will reload it automatically.`;
+-          return;
+-        } catch (error) { showErrors(['Unable to save in place: ' + error.message]); return; }
++      const handle = fileHandle, name = fileName, baseline = fileContents, revision = fileRevision;
++      let writable;
++      saveInProgress = true;
++      document.getElementById('saveButton').disabled = true;
++      try {
++        const checkForConflict = async () => {
++          const current = await (await handle.getFile()).text();
++          if (current !== baseline) throw new Error('The file changed outside this editor. Your edits have been kept here. Download JSON to keep a copy, then use Open settings to reload the current file before editing again.');
++        };
++        await checkForConflict();
++        writable = await handle.createWritable();
++        // Permission prompts can remain open while the tray app changes the file.
++        await checkForConflict();
++        await writable.write(json);
++        await checkForConflict();
++        await writable.close();
++        if (fileHandle === handle && fileRevision === revision) {
++          fileContents = json;
++          document.getElementById('fileState').textContent = `${name} saved. The tray application will reload it automatically.`;
++        }
++      } catch (error) {
++        if (writable) { try { await writable.abort(); } catch (_) { } }
++        showErrors(['Unable to update ' + name + ': ' + error.message]);
++      } finally {
++        saveInProgress = false;
++        document.getElementById('saveButton').disabled = false;
+       }
+-      downloadJson(json);
+-      document.getElementById('fileState').textContent = 'A replacement settings.json was downloaded. Move it beside the executable.';
+     }
+ 
+     function downloadJson(contents = null) {
+@@ -530,11 +680,19 @@
+     function escapeHtml(value) { return String(value ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+ 
+     document.getElementById('openButton').addEventListener('click', openSettings);
++    document.getElementById('cancelFolder').addEventListener('click', () => document.getElementById('folderDialog').close());
++    document.getElementById('folderDialog').addEventListener('close', () => { folderTarget = null; });
++    document.getElementById('applyFolder').addEventListener('click', applyOutputFolder);
++    document.getElementById('folderFullPath').addEventListener('input', event => event.target.setCustomValidity(''));
++    document.getElementById('folderFullPath').addEventListener('keydown', event => {
++      if (event.key === 'Enter') { event.preventDefault(); applyOutputFolder(); }
++    });
+     document.getElementById('saveButton').addEventListener('click', saveChanges);
+     document.getElementById('downloadButton').addEventListener('click', () => downloadJson());
+     document.getElementById('fileInput').addEventListener('change', event => { if (event.target.files[0]) loadFile(event.target.files[0]); });
+     document.getElementById('addTask').addEventListener('click', () => { const task = newTask(uniqueName('New task')); config.tasks.push(task); selected = task.id; render(); });
+     document.addEventListener('click', event => {
++      if (event.target.closest('#browseOutputFolder')) { browseOutputFolder(); return; }
+       const select = event.target.closest('[data-select]'); if (select) { selected = select.dataset.select; render(); return; }
+       const timeAction = event.target.closest('[data-time-action]');
+       if (timeAction) {
+diff --git a/tests/ScheduledScreenshot.Tests/ScheduleCalculatorTests.cs b/tests/ScheduledScreenshot.Tests/ScheduleCalculatorTests.cs
+index 3e8e624..7c2d673 100644
+--- a/tests/ScheduledScreenshot.Tests/ScheduleCalculatorTests.cs
++++ b/tests/ScheduledScreenshot.Tests/ScheduleCalculatorTests.cs
+@@ -51,6 +51,58 @@ namespace ScheduledScreenshot.Tests
+             Assert.IsNull(result);
+         }
+ 
++        [TestMethod]
++        public void NearbyIntervalOccurrencesAreTakenOnlyAtTheirOwnDueTime()
++        {
++            var start = new DateTimeOffset(2026, 8, 24, 6, 0, 0, TimeSpan.Zero);
++            var first = EnabledIntervalTask(60);
++            var second = EnabledIntervalTask(60);
++            var pending = new PendingOccurrences();
++            pending.Add(ScheduleCalculator.GetNextOccurrence(first,
++                new TaskRuntimeState { intervalAnchorUtc = start.ToString("o") }, start));
++            pending.Add(ScheduleCalculator.GetNextOccurrence(second,
++                new TaskRuntimeState { intervalAnchorUtc = start.AddMilliseconds(100).ToString("o") }, start.AddMilliseconds(100)));
++
++            var firstBatch = pending.TakeDue(start.AddSeconds(60));
++            Assert.AreEqual(1, firstBatch.Count);
++            Assert.AreSame(first, firstBatch[0].Task);
++            Assert.AreEqual(0, pending.TakeDue(start.AddSeconds(60).AddMilliseconds(40)).Count);
++            var secondBatch = pending.TakeDue(start.AddSeconds(60).AddMilliseconds(100));
++            Assert.AreEqual(1, secondBatch.Count);
++            Assert.AreSame(second, secondBatch[0].Task);
++            Assert.AreEqual(0, pending.TakeDue(start.AddSeconds(61)).Count);
++        }
++
++        [TestMethod]
++        public void DelayedTimerConsumesArmedOccurrenceWithoutLosingIt()
++        {
++            var start = new DateTimeOffset(2026, 8, 24, 6, 0, 0, TimeSpan.Zero);
++            var task = EnabledIntervalTask(60);
++            var pending = new PendingOccurrences();
++            pending.Add(ScheduleCalculator.GetNextOccurrence(task,
++                new TaskRuntimeState { intervalAnchorUtc = start.ToString("o") }, start));
++
++            var due = pending.TakeDue(start.AddSeconds(61));
++            Assert.AreEqual(1, due.Count);
++            Assert.AreEqual(start.AddSeconds(60), due[0].DueUtc);
++            Assert.AreEqual(0, pending.TakeDue(start.AddSeconds(61)).Count);
++        }
++
++        [TestMethod]
++        public void ReschedulingDiscardsOccurrencesMissedDuringSuspension()
++        {
++            var start = new DateTimeOffset(2026, 8, 24, 6, 0, 0, TimeSpan.Zero);
++            var task = EnabledIntervalTask(60);
++            var state = new TaskRuntimeState { intervalAnchorUtc = start.ToString("o") };
++            var pending = new PendingOccurrences();
++            pending.Add(ScheduleCalculator.GetNextOccurrence(task, state, start));
++            pending.Clear();
++            pending.Add(ScheduleCalculator.GetNextOccurrence(task, state, start.AddSeconds(90)));
++
++            Assert.AreEqual(0, pending.TakeDue(start.AddSeconds(90)).Count);
++            Assert.AreEqual(start.AddSeconds(120), pending.TakeDue(start.AddSeconds(120))[0].DueUtc);
++        }
++
+         private static ScreenshotTaskSettings EnabledIntervalTask(int seconds)
+         {
+             return new ScreenshotTaskSettings
+diff --git a/tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj b/tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj
+index 2fb3538..0c5d539 100644
+--- a/tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj
++++ b/tests/ScheduledScreenshot.Tests/ScheduledScreenshot.Tests.csproj
+@@ -19,5 +19,6 @@
+     <Compile Include="..\..\src\ScheduledScreenshot\Services\FileNameTemplate.cs" Link="Source\FileNameTemplate.cs" />
+     <Compile Include="..\..\src\ScheduledScreenshot\Services\SettingsValidator.cs" Link="Source\SettingsValidator.cs" />
+     <Compile Include="..\..\src\ScheduledScreenshot\Services\ScheduleCalculator.cs" Link="Source\ScheduleCalculator.cs" />
++    <Compile Include="..\..\src\ScheduledScreenshot\Services\PendingOccurrences.cs" Link="Source\PendingOccurrences.cs" />
+   </ItemGroup>
+ </Project>
+diff --git a/tests/ScheduledScreenshot.Tests/SettingsAndTemplateTests.cs b/tests/ScheduledScreenshot.Tests/SettingsAndTemplateTests.cs
+index 367eb47..b0e13da 100644
+--- a/tests/ScheduledScreenshot.Tests/SettingsAndTemplateTests.cs
++++ b/tests/ScheduledScreenshot.Tests/SettingsAndTemplateTests.cs
+@@ -21,6 +21,33 @@ namespace ScheduledScreenshot.Tests
+             Assert.IsTrue(result.IsValid, string.Join(Environment.NewLine, result.Errors));
+         }
+ 
++        [TestMethod]
++        public void ExpiredTasksRemainValidAndCanBeDisabledIndependently()
++        {
++            var settings = new AppSettings();
++            for (var index = 0; index < 2; index++)
++            {
++                settings.tasks.Add(new ScreenshotTaskSettings
++                {
++                    name = "Expired " + index,
++                    enabled = true,
++                    stopCondition = new StopConditionSettings
++                    {
++                        mode = "at", endAtLocal = "2020-01-01T12:00:00"
++                    }
++                });
++            }
++            var result = SettingsValidator.Validate(settings, Path.GetTempPath(), false);
++            Assert.IsTrue(result.IsValid, string.Join(Environment.NewLine, result.Errors));
++            foreach (var task in settings.tasks)
++            {
++                Assert.IsTrue(ScheduleCalculator.HasReachedEndCondition(task, new TaskRuntimeState(), DateTimeOffset.UtcNow));
++                task.enabled = false;
++                result = SettingsValidator.Validate(settings, Path.GetTempPath(), false);
++                Assert.IsTrue(result.IsValid, string.Join(Environment.NewLine, result.Errors));
++            }
++        }
++
+         [TestMethod]
+         public void FilenameTemplateRequiresDisplayToken()
+         {
+diff --git a/tests/cases/capture-count/editor.e2e.cjs b/tests/cases/capture-count/editor.e2e.cjs
+index f444234..543580a 100644
+--- a/tests/cases/capture-count/editor.e2e.cjs
++++ b/tests/cases/capture-count/editor.e2e.cjs
+@@ -74,7 +74,9 @@ async function main() {
+ 
+     await count.fill('2');
+     await page.getByRole('button', { name: 'Save changes' }).click();
+-    if (await page.getByRole('alert').isVisible()) throw new Error('Valid capture-count task failed validation.');
++    if (!(await page.getByRole('alert').innerText()).includes('Use Open settings')) {
++      throw new Error('Valid settings without a writable file should require Open settings.');
++    }
+ 
+     const downloadPromise = page.waitForEvent('download');
+     await page.getByRole('button', { name: 'Download JSON' }).click();
+diff --git a/src/ScheduledScreenshot/FolderPicker.cs b/src/ScheduledScreenshot/FolderPicker.cs
+new file mode 100644
+index 0000000..a3840e2
+--- /dev/null
++++ b/src/ScheduledScreenshot/FolderPicker.cs
+@@ -0,0 +1,77 @@
++using System;
++using System.Runtime.InteropServices;
++using System.Windows.Forms;
++
++namespace ScheduledScreenshot
++{
++    internal static class FolderPicker
++    {
++        public static string Show(IWin32Window owner)
++        {
++            var dialog = (IFileDialog)new FileOpenDialog();
++            try
++            {
++                dialog.GetOptions(out var options);
++                // FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_DONTADDTORECENT
++                dialog.SetOptions(options | 0x20 | 0x40 | 0x800 | 0x02000000);
++                dialog.SetTitle("Choose screenshot save folder");
++                dialog.SetOkButtonLabel("Select Folder");
++                var result = dialog.Show(owner.Handle);
++                if (result == unchecked((int)0x800704C7)) return null;
++                Marshal.ThrowExceptionForHR(result);
++                dialog.GetResult(out var item);
++                try
++                {
++                    item.GetDisplayName(0x80058000, out var path); // SIGDN_FILESYSPATH
++                    try { return Marshal.PtrToStringUni(path); }
++                    finally { Marshal.FreeCoTaskMem(path); }
++                }
++                finally { Marshal.ReleaseComObject(item); }
++            }
++            finally { Marshal.ReleaseComObject(dialog); }
++        }
++
++        [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
++        private class FileOpenDialog { }
++
++        // IFileDialog vtable order, including methods not used by this picker.
++        [ComImport, Guid("42F85136-DB7E-439C-85F1-E4075D135FC8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
++        private interface IFileDialog
++        {
++            [PreserveSig] int Show(IntPtr owner);
++            void SetFileTypes(uint count, IntPtr filters);
++            void SetFileTypeIndex(uint index);
++            void GetFileTypeIndex(out uint index);
++            void Advise(IntPtr events, out uint cookie);
++            void Unadvise(uint cookie);
++            void SetOptions(uint options);
++            void GetOptions(out uint options);
++            void SetDefaultFolder(IShellItem folder);
++            void SetFolder(IShellItem folder);
++            void GetFolder(out IShellItem folder);
++            void GetCurrentSelection(out IShellItem item);
++            void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
++            void GetFileName(out IntPtr name);
++            void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
++            void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
++            void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
++            void GetResult(out IShellItem item);
++            void AddPlace(IShellItem item, uint placement);
++            void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string extension);
++            void Close(int result);
++            void SetClientGuid(ref Guid guid);
++            void ClearClientData();
++            void SetFilter(IntPtr filter);
++        }
++
++        [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
++        private interface IShellItem
++        {
++            void BindToHandler(IntPtr bindingContext, ref Guid handler, ref Guid interfaceId, out IntPtr result);
++            void GetParent(out IShellItem parent);
++            void GetDisplayName(uint type, out IntPtr name);
++            void GetAttributes(uint mask, out uint attributes);
++            void Compare(IShellItem other, uint hint, out int order);
++        }
++    }
++}
+diff --git a/src/ScheduledScreenshot/Services/EditorHost.cs b/src/ScheduledScreenshot/Services/EditorHost.cs
+new file mode 100644
+index 0000000..4979e87
+--- /dev/null
++++ b/src/ScheduledScreenshot/Services/EditorHost.cs
+@@ -0,0 +1,130 @@
++using System;
++using System.IO;
++using System.Net;
++using System.Net.Sockets;
++using System.Security.Cryptography;
++using System.Text;
++using System.Threading;
++using System.Threading.Tasks;
++
++namespace ScheduledScreenshot.Services
++{
++    // Available only on this computer, and only while the tray app is running.
++    internal sealed class EditorHost : IDisposable
++    {
++        private readonly HttpListener _listener = new HttpListener();
++        private readonly string _editorPath;
++        private readonly Func<Task<string>> _chooseFolder;
++        private readonly DiagnosticLogger _logger;
++        private readonly string _token;
++        private readonly string _origin;
++        private int _choosingFolder;
++        private volatile bool _disposed;
++
++        public EditorHost(string editorPath, Func<Task<string>> chooseFolder, DiagnosticLogger logger)
++        {
++            _editorPath = editorPath;
++            _chooseFolder = chooseFolder;
++            _logger = logger;
++            var secret = new byte[32];
++            using (var random = RandomNumberGenerator.Create()) random.GetBytes(secret);
++            _token = Convert.ToBase64String(secret);
++            // Reserve an ephemeral loopback port, then bind HTTP.sys to that exact address.
++            var probe = new TcpListener(IPAddress.Loopback, 0);
++            probe.Start();
++            var port = ((IPEndPoint)probe.LocalEndpoint).Port;
++            probe.Stop();
++            _origin = "http://127.0.0.1:" + port;
++            _listener.Prefixes.Add(_origin + "/");
++            try { _listener.Start(); }
++            catch { _listener.Close(); throw; }
++            Url = _origin + "/#folderToken=" + Uri.EscapeDataString(_token);
++            _ = ListenAsync();
++        }
++
++        public string Url { get; }
++
++        public void Dispose()
++        {
++            _disposed = true;
++            _listener.Close();
++        }
++
++        private async Task ListenAsync()
++        {
++            while (!_disposed)
++            {
++                HttpListenerContext context;
++                try { context = await _listener.GetContextAsync().ConfigureAwait(false); }
++                catch (Exception exception) when (exception is HttpListenerException || exception is ObjectDisposedException)
++                {
++                    if (!_disposed) _logger.Error("EDITOR_HOST_FAILED", "The local editor listener stopped.", exception);
++                    return;
++                }
++                _ = HandleAsync(context);
++            }
++        }
++
++        private async Task HandleAsync(HttpListenerContext context)
++        {
++            try
++            {
++                var request = context.Request;
++                context.Response.Headers["Cache-Control"] = "no-store";
++                context.Response.Headers["X-Content-Type-Options"] = "nosniff";
++                context.Response.Headers["X-Frame-Options"] = "DENY";
++                context.Response.Headers["Referrer-Policy"] = "no-referrer";
++                if (request.HttpMethod == "GET" && request.Url.AbsolutePath == "/")
++                {
++                    await ReplyAsync(context, 200, File.ReadAllText(_editorPath), "text/html; charset=utf-8").ConfigureAwait(false);
++                    return;
++                }
++                if (request.HttpMethod != "POST" || request.Url.AbsolutePath != "/api/output-folder")
++                {
++                    await ReplyAsync(context, 404, "{}").ConfigureAwait(false);
++                    return;
++                }
++                // No CORS: other websites cannot invoke the picker or read filesystem paths.
++                if (!string.Equals(request.Headers["X-Editor-Token"], _token, StringComparison.Ordinal)
++                    || !string.Equals(request.Headers["Origin"], _origin, StringComparison.Ordinal))
++                {
++                    await ReplyAsync(context, 403, "{}").ConfigureAwait(false);
++                    return;
++                }
++                if (Interlocked.CompareExchange(ref _choosingFolder, 1, 0) != 0)
++                {
++                    await ReplyAsync(context, 409, JsonUtility.Serialize(new { error = "A folder picker is already open." })).ConfigureAwait(false);
++                    return;
++                }
++                try
++                {
++                    var path = await _chooseFolder().ConfigureAwait(false);
++                    await ReplyAsync(context, 200, JsonUtility.Serialize(new { path })).ConfigureAwait(false);
++                }
++                finally { Interlocked.Exchange(ref _choosingFolder, 0); }
++            }
++            catch (Exception exception)
++            {
++                if (!_disposed) _logger.Error("EDITOR_REQUEST_FAILED", "A local editor request failed.", exception);
++                try { await ReplyAsync(context, 500, JsonUtility.Serialize(new { error = "Unable to open the folder picker. Check the app's logs." })).ConfigureAwait(false); }
++                catch { }
++            }
++            finally
++            {
++                try { context.Response.Close(); }
++                catch (ObjectDisposedException) { }
++                catch (HttpListenerException) { }
++            }
++        }
++
++        private static async Task ReplyAsync(HttpListenerContext context, int status, string text,
++            string contentType = "application/json; charset=utf-8")
++        {
++            var bytes = Encoding.UTF8.GetBytes(text);
++            context.Response.StatusCode = status;
++            context.Response.ContentType = contentType;
++            context.Response.ContentLength64 = bytes.Length;
++            await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
++        }
++    }
++}
+diff --git a/src/ScheduledScreenshot/Services/PendingOccurrences.cs b/src/ScheduledScreenshot/Services/PendingOccurrences.cs
+new file mode 100644
+index 0000000..a85af2f
+--- /dev/null
++++ b/src/ScheduledScreenshot/Services/PendingOccurrences.cs
+@@ -0,0 +1,23 @@
++using System;
++using System.Collections.Generic;
++using System.Linq;
++using ScheduledScreenshot.Models;
++
++namespace ScheduledScreenshot.Services
++{
++    // Accessed under the scheduler lock. Each armed occurrence can be taken only once.
++    internal sealed class PendingOccurrences
++    {
++        private readonly List<TaskOccurrence> _items = new List<TaskOccurrence>();
++
++        public void Clear() => _items.Clear();
++        public void Add(TaskOccurrence occurrence) => _items.Add(occurrence);
++
++        public List<TaskOccurrence> TakeDue(DateTimeOffset nowUtc)
++        {
++            var due = _items.Where(item => item.DueUtc <= nowUtc).ToList();
++            _items.RemoveAll(item => item.DueUtc <= nowUtc);
++            return due;
++        }
++    }
++}
+diff --git a/tests/cases/import-safety/editor.e2e.cjs b/tests/cases/import-safety/editor.e2e.cjs
+new file mode 100644
+index 0000000..6b1976c
+--- /dev/null
++++ b/tests/cases/import-safety/editor.e2e.cjs
+@@ -0,0 +1,51 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const path = require('node:path');
++const { pathToFileURL } = require('node:url');
++const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
++
++async function main() {
++  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined });
++  try {
++    const page = await browser.newPage();
++    await page.goto(pathToFileURL(path.resolve(__dirname, '../../../src/ScheduledScreenshot/config-editor.html')).href);
++    const importSettings = async value => {
++      await page.locator('#fileInput').setInputFiles({ name: 'settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(value)) });
++    };
++    const markup = '<img src=x onerror="window.reviewInjected=true">';
++    await page.locator('#addTask').click();
++    await page.locator('#task-name').fill('Keep my draft');
++    for (const value of [
++      { tasks: [{ schedule: { intervalSeconds: markup } }] },
++      { tasks: [{ schedule: { times: [{}] } }] },
++      { tasks: [{ stopCondition: { captureCount: markup } }] },
++      { tasks: [null] },
++      { tasks: {} },
++      { logging: [] },
++      { paused: 'false' },
++      []
++    ]) {
++      await importSettings(value);
++      await page.waitForFunction(() => document.getElementById('errorBox').textContent.includes('Unable to load JSON'));
++      assert.equal(await page.locator('#task-name').inputValue(), 'Keep my draft');
++      assert.equal(await page.evaluate(() => window.reviewInjected), undefined);
++      assert.equal(await page.locator('img').count(), 0);
++    }
++    // Legitimate string fields remain editable text; expired tasks remain exportable.
++    await importSettings({ tasks: [{ name: markup, enabled: true, stopCondition: { mode: 'at', endAtLocal: '2020-01-01T00:00:00' } }] });
++    await page.waitForFunction(() => document.getElementById('fileState').textContent.startsWith('settings.json loaded'));
++    await page.locator('#taskNav [data-select]').nth(1).click();
++    assert.equal(await page.locator('#task-name').inputValue(), markup);
++    assert.equal(await page.locator('img').count(), 0);
++    const download = page.waitForEvent('download');
++    await page.locator('#downloadButton').click();
++    assert.equal((await download).suggestedFilename(), 'settings.json');
++    assert.equal(await page.evaluate(() => window.reviewInjected), undefined);
++    console.log('Import safety checks passed: malformed types rejected, drafts preserved, markup rendered as text, and expired tasks accepted.');
++  } finally {
++    await browser.close();
++  }
++}
++
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/tests/cases/output-folder/HostHarness.cs b/tests/cases/output-folder/HostHarness.cs
+new file mode 100644
+index 0000000..5c18aee
+--- /dev/null
++++ b/tests/cases/output-folder/HostHarness.cs
+@@ -0,0 +1,30 @@
++using System;
++using System.Reflection;
++using System.Threading;
++using System.Threading.Tasks;
++
++// Compiled against .NET Framework for the browser/real-loopback integration check.
++public static class HostHarness
++{
++    public static void Main(string[] args)
++    {
++        var assembly = Assembly.LoadFrom(args[0]);
++        using (var logger = (IDisposable)Activator.CreateInstance(
++            assembly.GetType("ScheduledScreenshot.Services.DiagnosticLogger"), new object[] { args[1] }))
++        {
++            var calls = 0;
++            Func<Task<string>> choose = async () =>
++            {
++                await Task.Delay(100);
++                return Interlocked.Increment(ref calls) == 1 ? args[2] : null;
++            };
++            using (var host = (IDisposable)Activator.CreateInstance(
++                assembly.GetType("ScheduledScreenshot.Services.EditorHost"),
++                new object[] { args[3], choose, logger }))
++            {
++                Console.WriteLine(host.GetType().GetProperty("Url").GetValue(host));
++                Console.ReadLine();
++            }
++        }
++    }
++}
+diff --git a/tests/cases/output-folder/editor.e2e.cjs b/tests/cases/output-folder/editor.e2e.cjs
+new file mode 100644
+index 0000000..a956436
+--- /dev/null
++++ b/tests/cases/output-folder/editor.e2e.cjs
+@@ -0,0 +1,88 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const fs = require('node:fs/promises');
++const path = require('node:path');
++const { pathToFileURL } = require('node:url');
++const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
++
++async function main() {
++  const artifacts = path.join(__dirname, 'artifacts');
++  await fs.mkdir(artifacts, { recursive: true });
++  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined });
++  try {
++    const page = await browser.newPage();
++    const errors = [];
++    page.on('pageerror', error => errors.push(error.message));
++    await page.goto(pathToFileURL(path.resolve(__dirname, '../../../src/ScheduledScreenshot/config-editor.html')).href);
++    await page.locator('#addTask').click();
++    const output = page.locator('#task-capture-outputFolder');
++    const original = await output.inputValue();
++    const browse = page.locator('#browseOutputFolder');
++    const dialog = page.locator('#folderDialog');
++
++    // The OS picker cannot run headlessly; simulate only its public API result.
++    await page.evaluate(() => { window.showDirectoryPicker = async () => { throw new DOMException('Cancelled', 'AbortError'); }; });
++    await browse.click();
++    assert.equal(await dialog.isVisible(), false);
++    assert.equal(await output.inputValue(), original);
++
++    await page.evaluate(() => {
++      window.showDirectoryPicker = async options => {
++        window.pickerOptions = options;
++        return { name: 'Screenshots & photos' };
++      };
++    });
++    await browse.click();
++    await dialog.waitFor({ state: 'visible' });
++    assert.match(await page.locator('#folderDialogNote').textContent(), /Screenshots & photos/);
++    assert.equal(await page.locator('#folderFullPath').inputValue(), '');
++    assert.equal(await output.inputValue(), original, 'A bare folder name must not replace the configured path.');
++    assert.equal(await page.evaluate(() => window.pickerOptions.mode), 'read');
++    await page.locator('#folderFullPath').fill('Screenshots & photos');
++    await page.locator('#applyFolder').click();
++    assert.equal(await dialog.isVisible(), true, 'Relative folder names must be rejected in the confirmation dialog.');
++    const chosen = 'C:\\Pictures\\Screenshots & photos';
++    await page.locator('#folderFullPath').fill(`"${chosen}"`);
++    await page.locator('#applyFolder').click();
++    assert.equal(await output.inputValue(), chosen);
++
++    await browse.click();
++    await dialog.waitFor({ state: 'visible' });
++    await page.locator('#folderFullPath').fill('C:\\Cancelled');
++    await page.keyboard.press('Escape');
++    assert.equal(await output.inputValue(), chosen);
++
++    await page.evaluate(() => { window.showDirectoryPicker = undefined; });
++    await browse.click();
++    await dialog.waitFor({ state: 'visible' });
++    assert.match(await page.locator('#folderDialogNote').textContent(), /unavailable/);
++    await page.locator('#folderFullPath').fill('/Users/example/Pictures');
++    await page.locator('#cancelFolder').click();
++    assert.equal(await output.inputValue(), chosen);
++
++    await page.setViewportSize({ width: 390, height: 844 });
++    await browse.click();
++    await dialog.waitFor({ state: 'visible' });
++    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
++    await page.screenshot({ path: path.join(artifacts, 'folder-dialog-mobile.png') });
++    await page.locator('#cancelFolder').click();
++    await page.setViewportSize({ width: 1280, height: 1000 });
++    await output.scrollIntoViewIfNeeded();
++    await page.screenshot({ path: path.join(artifacts, 'output-folder-desktop.png') });
++
++    const downloadReady = page.waitForEvent('download');
++    await page.locator('#downloadButton').click();
++    const download = await downloadReady;
++    const settingsPath = path.join(artifacts, 'settings.json');
++    await download.saveAs(settingsPath);
++    const settings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
++    assert.equal(settings.tasks[0].capture.outputFolder, chosen);
++    assert.deepEqual(errors, []);
++    console.log('Output folder browser checks passed: picker selection, cancellation, full-path validation, fallback, mobile layout, and JSON export.');
++  } finally {
++    await browser.close();
++  }
++}
++
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/tests/cases/output-folder/host.e2e.cjs b/tests/cases/output-folder/host.e2e.cjs
+new file mode 100644
+index 0000000..25f66bf
+--- /dev/null
++++ b/tests/cases/output-folder/host.e2e.cjs
+@@ -0,0 +1,60 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const path = require('node:path');
++const fs = require('node:fs/promises');
++const { spawn } = require('node:child_process');
++const readline = require('node:readline');
++const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
++
++async function main() {
++  const root = path.resolve(__dirname, '../../..');
++  const artifacts = path.join(__dirname, 'artifacts', 'host');
++  await fs.mkdir(artifacts, { recursive: true });
++  const chosen = path.join(artifacts, 'Selected screenshots');
++  await fs.mkdir(chosen, { recursive: true });
++  const harness = spawn(process.env.HOST_HARNESS, [process.env.APP_ASSEMBLY, artifacts, chosen,
++    path.join(root, 'src/ScheduledScreenshot/config-editor.html')], { windowsHide: true, stdio: ['pipe', 'pipe', 'inherit'] });
++  let browser;
++  try {
++    const url = await new Promise((resolve, reject) => {
++      const timeout = setTimeout(() => reject(new Error('Editor host did not start.')), 10000);
++      harness.once('error', error => { clearTimeout(timeout); reject(error); });
++      harness.once('exit', code => { clearTimeout(timeout); reject(new Error(`Host exited: ${code}`)); });
++      readline.createInterface({ input: harness.stdout }).once('line', line => { clearTimeout(timeout); resolve(line); });
++    });
++    const address = new URL(url);
++    const token = new URLSearchParams(address.hash.slice(1)).get('folderToken');
++    const endpoint = address.origin + '/api/output-folder';
++    const denied = await fetch(endpoint, { method: 'POST', headers: { Origin: address.origin } });
++    assert.equal(denied.status, 403);
++    const crossOrigin = await fetch(endpoint, { method: 'POST', headers: { Origin: 'https://example.com', 'X-Editor-Token': token } });
++    assert.equal(crossOrigin.status, 403);
++    assert.equal((await fetch(endpoint)).status, 404);
++
++    browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined });
++    const page = await browser.newPage();
++    await page.goto(url);
++    await page.locator('#addTask').click();
++    await page.locator('#browseOutputFolder').click();
++    await page.waitForFunction(expected => document.getElementById('task-capture-outputFolder').value === expected, chosen);
++    assert.equal(await page.locator('#folderDialog').isVisible(), false);
++    assert.match(await page.locator('#fileState').textContent(), /Output folder updated/);
++    await page.locator('#browseOutputFolder').click();
++    await page.waitForFunction(() => !document.getElementById('browseOutputFolder').disabled);
++    assert.equal(await page.locator('#task-capture-outputFolder').inputValue(), chosen, 'Cancel must preserve the path.');
++    const downloaded = page.waitForEvent('download');
++    await page.locator('#downloadButton').click();
++    const exportPath = path.join(artifacts, 'settings.json');
++    await (await downloaded).saveAs(exportPath);
++    assert.equal(JSON.parse(await fs.readFile(exportPath, 'utf8')).tasks[0].capture.outputFolder, chosen);
++    await page.screenshot({ path: path.join(artifacts, 'automatic-folder.png'), fullPage: true });
++    console.log('Real Windows editor-host integration passed: authenticated loopback request, automatic full-path fill, cancellation, JSON export, and cross-origin rejection.');
++  } finally {
++    if (browser) await browser.close();
++    harness.stdin.end('\n');
++    harness.kill();
++  }
++}
++
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/tests/cases/save-settings/editor.e2e.cjs b/tests/cases/save-settings/editor.e2e.cjs
+new file mode 100644
+index 0000000..79957a4
+--- /dev/null
++++ b/tests/cases/save-settings/editor.e2e.cjs
+@@ -0,0 +1,131 @@
++'use strict';
++
++const assert = require('node:assert/strict');
++const path = require('node:path');
++const { pathToFileURL } = require('node:url');
++const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
++
++async function main() {
++  const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined });
++  try {
++    const page = await browser.newPage({ acceptDownloads: true });
++    let downloads = 0;
++    page.on('download', () => downloads++);
++    await page.goto(pathToFileURL(path.resolve(__dirname, '../../../src/ScheduledScreenshot/config-editor.html')).href);
++    const save = page.locator('#saveButton');
++    const alert = page.locator('#errorBox');
++    await save.click();
++    assert.match(await alert.textContent(), /Open settings/);
++    assert.equal(downloads, 0);
++
++    // Model the browser's file handle and transactional writable stream, not a download.
++    await page.evaluate(() => {
++      window.savedFile = JSON.stringify({ schemaVersion: 1, tasks: [] });
++      window.writeCount = 0;
++      window.abortCount = 0;
++      window.saveFailure = '';
++      window.currentHandle = {
++        getFile: async () => new File([window.savedFile], 'settings.json', { type: 'application/json' }),
++        createWritable: async () => {
++          if (window.saveFailure === 'permission') throw new DOMException('Write access denied', 'NotAllowedError');
++          if (window.changeDuring === 'permission') window.savedFile = window.externalContents;
++          let pending;
++          return {
++            write: async value => {
++              if (window.saveFailure === 'write') throw new Error('Disk is full');
++              pending = value;
++              if (window.changeDuring === 'write') window.savedFile = window.externalContents;
++            },
++            close: async () => { window.savedFile = pending; window.writeCount++; },
++            abort: async () => { window.abortCount++; }
++          };
++        }
++      };
++      window.showOpenFilePicker = async () => [window.currentHandle];
++    });
++    await page.locator('#openButton').click();
++    await page.waitForFunction(() => document.getElementById('fileState').textContent.includes('update this file directly'));
++    await page.locator('#addTask').click();
++    await page.locator('#task-name').fill('Saved to original file');
++    await save.click();
++    await page.waitForFunction(() => window.writeCount === 1);
++    assert.equal(await page.evaluate(() => JSON.parse(window.savedFile).tasks[0].name), 'Saved to original file');
++    assert.match(await page.locator('#fileState').textContent(), /settings.json saved/);
++    assert.equal(downloads, 0);
++
++    // Failed opening must not bind the existing edits to a different, unreadable file.
++    await page.evaluate(() => {
++      window.showOpenFilePicker = async () => [{
++        getFile: async () => new File(['invalid json'], 'broken.json'),
++        createWritable: async () => { throw new Error('Wrong file was targeted'); }
++      }];
++    });
++    await page.locator('#openButton').click();
++    await page.waitForFunction(() => document.getElementById('errorBox').textContent.includes('Unable to load JSON'));
++    await save.click();
++    await page.waitForFunction(() => window.writeCount === 2);
++
++    for (const failure of ['permission', 'write']) {
++      await page.evaluate(value => { window.saveFailure = value; }, failure);
++      await save.click();
++      await page.waitForFunction(() => document.getElementById('errorBox').textContent.includes('Unable to update settings.json'));
++      assert.equal(await page.evaluate(() => window.writeCount), 2);
++      assert.equal(await save.isEnabled(), true);
++      assert.equal(downloads, 0);
++    }
++    assert.equal(await page.evaluate(() => window.abortCount), 1);
++
++    // Preserve application changes made before saving or while permission/write is pending.
++    for (const phase of ['before', 'permission', 'write']) {
++      await page.evaluate(() => {
++        window.saveFailure = '';
++        window.changeDuring = '';
++        window.showOpenFilePicker = async () => [window.currentHandle];
++      });
++      await page.locator('#openButton').click();
++      await page.waitForFunction(() => document.getElementById('fileState').textContent.includes('update this file directly'));
++      await page.locator('#taskNav [data-select]').nth(1).click();
++      await page.locator('#task-name').fill('Unsaved draft');
++      await page.evaluate(value => {
++        const external = JSON.parse(window.savedFile);
++        external.paused = true;
++        external.tasks[0].enabled = false;
++        external.tasks[0].name = `External edit ${value}`;
++        window.externalContents = JSON.stringify(external);
++        window.changeDuring = value;
++        if (value === 'before') window.savedFile = window.externalContents;
++      }, phase);
++      await save.click();
++      await page.waitForFunction(() => document.getElementById('errorBox').textContent.includes('changed outside this editor'));
++      assert.equal(await page.evaluate(() => window.savedFile === window.externalContents), true);
++      assert.equal(await page.evaluate(() => window.writeCount), 2);
++      assert.equal(await page.locator('#task-name').inputValue(), 'Unsaved draft');
++      assert.equal(await save.isEnabled(), true);
++    }
++    assert.equal(await page.evaluate(() => window.abortCount), 3);
++
++    // Importing via a standard file input must discard the previous write handle.
++    await page.locator('#fileInput').setInputFiles({
++      name: 'other-settings.json', mimeType: 'application/json',
++      buffer: Buffer.from(JSON.stringify({ schemaVersion: 1, tasks: [] }))
++    });
++    await page.waitForFunction(() => document.getElementById('fileState').textContent.startsWith('other-settings.json loaded'));
++    await save.click();
++    assert.match(await alert.textContent(), /Use Open settings/);
++    assert.equal(await page.evaluate(() => window.writeCount), 2);
++    await page.evaluate(() => { window.showOpenFilePicker = undefined; });
++    await save.click();
++    assert.match(await alert.textContent(), /cannot update local files directly/);
++    assert.equal(downloads, 0);
++
++    const exported = page.waitForEvent('download');
++    await page.locator('#downloadButton').click();
++    assert.equal((await exported).suggestedFilename(), 'settings.json');
++    assert.equal(downloads, 1);
++    console.log('Save settings checks passed: original-file writes, failed-open isolation, permission/write failures, external-change conflicts, imported-file isolation, unsupported browser, and separate export.');
++  } finally {
++    await browser.close();
++  }
++}
++
++main().catch(error => { console.error(error); process.exitCode = 1; });
+diff --git a/tests/cases/scheduler/RuntimeHarness.cs b/tests/cases/scheduler/RuntimeHarness.cs
+new file mode 100644
+index 0000000..5dad2ea
+--- /dev/null
++++ b/tests/cases/scheduler/RuntimeHarness.cs
+@@ -0,0 +1,102 @@
++using System;
++using System.Collections;
++using System.Collections.Concurrent;
++using System.Drawing;
++using System.IO;
++using System.Linq;
++using System.Reflection;
++using System.Threading;
++using System.Windows.Forms;
++
++// Run the built configuration, scheduler, and capture services in an isolated directory.
++// This does not start a tray instance or alter the running application's settings.
++public static class RuntimeHarness
++{
++    private sealed class PumpContext : SynchronizationContext
++    {
++        private readonly ConcurrentQueue<Action> queue = new ConcurrentQueue<Action>();
++        public override void Post(SendOrPostCallback callback, object state)
++        {
++            queue.Enqueue(() => callback(state));
++        }
++        public void Drain()
++        {
++            Action action;
++            while (queue.TryDequeue(out action)) action();
++        }
++    }
++
++    private static object Create(Assembly assembly, string name, params object[] args)
++    {
++        return Activator.CreateInstance(assembly.GetType("ScheduledScreenshot.Services." + name, true), args);
++    }
++
++    private static object Get(object value, string name)
++    {
++        return value.GetType().GetProperty(name).GetValue(value);
++    }
++
++    private static void Check(bool condition, string message)
++    {
++        if (!condition) throw new Exception(message);
++    }
++
++    [STAThread]
++    public static void Main(string[] args)
++    {
++        var assembly = Assembly.LoadFrom(Path.GetFullPath(args[0]));
++        var directory = Path.Combine(Path.GetTempPath(), "ScheduledScreenshot-regression-" + Guid.NewGuid().ToString("N"));
++        Directory.CreateDirectory(directory);
++        try
++        {
++            var tasks = new[] { "jpeg", "png", "expired-1", "expired-2" }.Select(name =>
++                "{\"id\":\"" + Guid.NewGuid() + "\",\"name\":\"" + name + "\",\"enabled\":true," +
++                "\"capture\":{\"outputFolder\":\"" + name + "\",\"imageFormat\":\"" + (name == "png" ? "png" : "jpeg") + "\"}," +
++                "\"schedule\":{\"intervalSeconds\":1},\"stopCondition\":" +
++                (name.StartsWith("expired") ? "{\"mode\":\"at\",\"endAtLocal\":\"2020-01-01T00:00:00\"}" : "{\"mode\":\"count\",\"captureCount\":1}") + "}");
++            File.WriteAllText(Path.Combine(directory, "settings.json"), "{\"tasks\":[" + string.Join(",", tasks) + "]}");
++            var context = new PumpContext();
++            using (var logger = (IDisposable)Create(assembly, "DiagnosticLogger", directory))
++            {
++                using (var configuration = (IDisposable)Create(assembly, "ConfigurationService", directory, logger, context))
++                {
++                    Check(((IEnumerable)Get(Get(configuration, "Current"), "tasks")).Cast<object>().Count() == 4, "Expired tasks invalidated startup.");
++                    var state = Create(assembly, "RuntimeStateStore", directory, logger);
++                    var capture = Create(assembly, "CaptureCoordinator", directory, logger);
++                    using (var scheduler = (IDisposable)Create(assembly, "SchedulerService", configuration, state, capture, logger))
++                    {
++                        var finish = DateTime.UtcNow.AddSeconds(6);
++                        while (DateTime.UtcNow < finish) { context.Drain(); Thread.Sleep(20); }
++                        context.Drain();
++                        var current = Get(configuration, "Current");
++                        Check(!(bool)Get(current, "paused"), "Startup unexpectedly paused all tasks.");
++                        Check(((IEnumerable)Get(current, "tasks")).Cast<object>().All(task => !(bool)Get(task, "enabled")), "Expired/count-limited tasks did not stop.");
++                    }
++                }
++                using (var restarted = (IDisposable)Create(assembly, "ConfigurationService", directory, logger, context))
++                {
++                    Check(((IEnumerable)Get(Get(restarted, "Current"), "tasks")).Cast<object>().Count() == 4, "Restart lost settings.");
++                }
++            }
++            foreach (var format in new[] { "jpeg", "png" })
++            {
++                var files = Directory.GetFiles(Path.Combine(directory, format), "*.*", SearchOption.AllDirectories);
++                Check(files.Length == Screen.AllScreens.Length, "Expected exactly one " + format + " image per monitor.");
++                foreach (var file in files)
++                    using (var image = Image.FromFile(file)) Check(image.Width > 0 && image.Height > 0, "Invalid screenshot.");
++            }
++            foreach (var name in new[] { "expired-1", "expired-2" })
++                Check(Directory.GetFiles(Path.Combine(directory, name), "*.*", SearchOption.AllDirectories).Length == 0, "Expired task captured an image.");
++            var logs = string.Join("\n", Directory.GetFiles(Path.Combine(directory, "logs"), "*.jsonl").Select(File.ReadAllText));
++            foreach (var failure in new[] { "SCHEDULER_ERROR", "CAPTURE_PROFILE_FAILED", "CONFIG_REJECTED" })
++                Check(!logs.Contains(failure), "Unexpected runtime failure: " + failure);
++            Console.WriteLine("Runtime regression passed: simultaneous expiration, JPEG/PNG scheduled captures, count completion, no duplicate images, and settings preserved after restart.");
++        }
++        finally
++        {
++            // This path is generated above as a unique child of the system temporary directory.
++            var tempRoot = Path.GetFullPath(Path.GetTempPath()).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
++            if (Path.GetFullPath(directory).StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase)) Directory.Delete(directory, true);
++        }
++    }
++}

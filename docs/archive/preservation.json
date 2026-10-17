@@ -1,0 +1,18 @@
+{
+  "baseCommit": "75c656b488909bcead0f44e0db78efc6a0b3e5c5",
+  "archive": "artifacts\\legacy-before-rust.zip",
+  "archiveSha256": "fb64cb3fb79ab2dab6db811434c93e59443b67c83b24409e8db1fda261223353",
+  "patchSha256": "78b3c7fee1cc9310d9fb3b27ad1806d5955cc961240294d0acd537f1a112ade6",
+  "files": 51,
+  "untrackedFilesPreserved": [
+    "src/ScheduledScreenshot/FolderPicker.cs",
+    "src/ScheduledScreenshot/Services/EditorHost.cs",
+    "src/ScheduledScreenshot/Services/PendingOccurrences.cs",
+    "tests/cases/import-safety/editor.e2e.cjs",
+    "tests/cases/output-folder/HostHarness.cs",
+    "tests/cases/output-folder/editor.e2e.cjs",
+    "tests/cases/output-folder/host.e2e.cjs",
+    "tests/cases/save-settings/editor.e2e.cjs",
+    "tests/cases/scheduler/RuntimeHarness.cs"
+  ]
+}
