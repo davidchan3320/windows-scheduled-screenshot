@@ -187,10 +187,9 @@ impl Server {
                 reply(&mut stream,status,"application/json", &serde_json::to_vec(&body).unwrap());
                 // Send the response before stopping the tray and scheduler.
                 #[cfg(windows)]
-                if status == 200 && request.path == "/api/restart" {
-                    if let Err(error) = crate::platform::request_restart() {
-                        app.store.log(&format!("Could not request restart: {error:#}"));
-                    }
+                if status == 200 && request.path == "/api/restart"
+                    && let Err(error) = crate::platform::request_restart() {
+                    app.store.log(&format!("Could not request restart: {error:#}"));
                 }
             })?;
         }
