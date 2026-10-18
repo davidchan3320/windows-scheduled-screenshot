@@ -74,13 +74,15 @@ All changes in this table apply after a successful save, without restarting. Typ
 | Change | Where to edit | Apply with |
 | --- | --- | --- |
 | Task schedule, output, image settings, or stop condition | Task → **Edit** | **Save task** |
-| Standalone capture destination | **Capture settings** → **Save screenshots to** | **Save folder** |
+| Standalone capture destination and screen mode | **Capture settings** → **Save screenshots to** | **Save capture settings** |
 | Global shortcut and its enabled state | **Capture settings** | **Save shortcut** |
 | Language | **Language** | Saves automatically |
 | Start at sign-in | **Keep it running** | Saves automatically |
 | Pause state | Manager or tray menu | **Pause scheduling** / **Resume scheduling** |
 
-**Capture now** and **Open captures folder** also save a pending standalone folder edit before using that destination. Keyboard and tray captures use the saved destination.
+**Capture now** and **Open captures folder** also save pending standalone folder and screen mode edits before using those settings. Keyboard and tray captures use the saved capture settings.
+
+All captures save one image containing every monitor in its desktop arrangement by default. Enable **Split images by screen** in **Capture settings** for standalone captures, or in a task's **Files & image** tab for scheduled captures. The task preview and capture summary reflect this choice.
 
 The standalone capture folder is separate from each task's output folder. **Capture now** saves a screenshot to the standalone destination. To verify a scheduled task's settings, check its next capture, last result, and **Open folder** after a scheduled run.
 
@@ -105,6 +107,12 @@ data/
 Exit **before** editing the file. Editing it while the app is running and then clicking **Restart application** can lose edits if the running app saves its in-memory settings. Restart is unnecessary for imports and changes saved through the manager.
 
 Change **Start at sign-in** through the manager so the app also updates the Windows startup shortcut; editing the JSON value alone does not create or remove that shortcut.
+
+### Screen mode fields
+
+`manualSplitByMonitor` controls standalone browser, shortcut, and tray captures. Each task's `capture.splitByMonitor` controls that task. Both are booleans and default to `false` when omitted, including imported configurations. Set either to `true` to save separate monitor images.
+
+Combined screenshots preserve the monitors' desktop arrangement, with black space where no monitor is present. For filename templates, combined images use `all-monitors` for `{display}` and `1` for `{displayIndex}`; split images use the monitor name and number.
 
 ## Settings and progress
 

@@ -237,21 +237,9 @@ fn route(app: &App, path: &str, v: Value, picker_busy: &AtomicBool) -> Result<Va
             );
             let mut settings: Settings = serde_json::from_value(value.clone())?;
             settings.validate()?;
-            crate::output::path_for(
-                &app.store.base,
-                &settings.manual_capture_task(),
-                chrono::Local::now(),
-                "DISPLAY1",
-                1,
-            )?;
+            crate::output::preview_path(&app.store.base, &settings.manual_capture_task())?;
             for task in &settings.tasks {
-                crate::output::path_for(
-                    &app.store.base,
-                    task,
-                    chrono::Local::now(),
-                    "DISPLAY1",
-                    1,
-                )?;
+                crate::output::preview_path(&app.store.base, task)?;
             }
             // Imported enabled tasks must not run before the user reviews them.
             settings.paused = true;
@@ -335,9 +323,7 @@ fn route(app: &App, path: &str, v: Value, picker_busy: &AtomicBool) -> Result<Va
             let task: Task =
                 serde_json::from_value(v.get("task").context("Missing task")?.clone())?;
             task.validate()?;
-            Ok(
-                json!({"path": crate::output::path_for(&app.store.base, &task, chrono::Local::now(), "DISPLAY1", 1)?}),
-            )
+            Ok(json!({"path": crate::output::preview_path(&app.store.base, &task)?}))
         }
         "/api/folder" => {
             ensure!(

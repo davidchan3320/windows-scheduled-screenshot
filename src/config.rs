@@ -67,6 +67,7 @@ pub struct Settings {
     pub start_at_sign_in: bool,
     pub language: String,
     pub manual_output_folder: String,
+    pub manual_split_by_monitor: bool,
     pub capture_shortcut: CaptureShortcut,
     pub tasks: Vec<Task>,
 }
@@ -79,6 +80,7 @@ impl Default for Settings {
             start_at_sign_in: false,
             language: "en".into(),
             manual_output_folder: "captures".into(),
+            manual_split_by_monitor: false,
             capture_shortcut: CaptureShortcut::default(),
             tasks: vec![],
         }
@@ -117,6 +119,7 @@ pub struct Capture {
     pub image_format: String,
     pub jpeg_quality: u8,
     pub include_cursor: bool,
+    pub split_by_monitor: bool,
 }
 impl Default for Capture {
     fn default() -> Self {
@@ -127,6 +130,7 @@ impl Default for Capture {
             image_format: "jpeg".into(),
             jpeg_quality: 85,
             include_cursor: false,
+            split_by_monitor: false,
         }
     }
 }
@@ -197,6 +201,7 @@ impl Settings {
             name: "Manual capture".into(),
             capture: Capture {
                 output_folder: self.manual_output_folder.clone(),
+                split_by_monitor: self.manual_split_by_monitor,
                 ..Capture::default()
             },
             ..Task::default()

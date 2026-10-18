@@ -120,15 +120,9 @@ impl App {
     }
     pub fn save(&self, mut candidate: Settings, revision: u64) -> Result<Value> {
         candidate.validate()?;
-        crate::output::path_for(
-            &self.store.base,
-            &candidate.manual_capture_task(),
-            Local::now(),
-            "DISPLAY1",
-            1,
-        )?;
+        crate::output::preview_path(&self.store.base, &candidate.manual_capture_task())?;
         for t in &candidate.tasks {
-            crate::output::path_for(&self.store.base, t, Local::now(), "DISPLAY1", 1)?;
+            crate::output::preview_path(&self.store.base, t)?;
         }
         let mut s = self.state.lock().unwrap();
         ensure!(
@@ -278,11 +272,7 @@ impl App {
     }
     fn finish_manual(&self, s: &mut State, result: Result<Vec<String>>, now: DateTime<Utc>) {
         let (success, result, files) = match result {
-            Ok(files) => (
-                true,
-                format!("Saved {} monitor image(s).", files.len()),
-                files,
-            ),
+            Ok(files) => (true, format!("Saved {} image(s).", files.len()), files),
             Err(error) => (false, format!("Failed: {error:#}"), vec![]),
         };
         self.store.log(&format!("Manual capture: {result}"));
@@ -455,8 +445,7 @@ impl App {
                         p.last_run_utc = Some(now);
                         match finished.result {
                             Ok(files) => {
-                                p.last_result =
-                                    Some(format!("Saved {} monitor image(s).", files.len()));
+                                p.last_result = Some(format!("Saved {} image(s).", files.len()));
                                 p.last_files = files;
                                 p.completed_captures = p.completed_captures.saturating_add(1);
                                 if job.task.schedule.kind == "once" {

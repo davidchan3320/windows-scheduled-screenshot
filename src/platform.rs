@@ -353,6 +353,195 @@ fn capture_monitor(m: &Monitor, cursor: bool) -> Result<image::RgbImage> {
             .context("Invalid captured image")
     }
 }
+
+// Preserve physical desktop coordinates, including negative origins and black
+// gaps between screens. Only the canvas and one monitor buffer are held at once.
+fn capture_combined(
+    monitors: &[Monitor],
+    mut grab: impl FnMut(&Monitor) -> Result<image::RgbImage>,
+) -> Result<image::RgbImage> {
+    use image::GenericImage;
+    ensure!(!monitors.is_empty(), "No supported monitors are available.");
+    let left = monitors.iter().map(|m| m.rect.left).min().unwrap();
+    let top = monitors.iter().map(|m| m.rect.top).min().unwrap();
+    let right = monitors.iter().map(|m| m.rect.right).max().unwrap();
+    let bottom = monitors.iter().map(|m| m.rect.bottom).max().unwrap();
+    let width = i64::from(right) - i64::from(left);
+    let height = i64::from(bottom) - i64::from(top);
+    ensure!(
+        width > 0
+            && height > 0
+            && width <= 80_000_000
+            && height <= 80_000_000
+            && width * height <= 80_000_000
+            && monitors
+                .iter()
+                .all(|m| m.rect.right > m.rect.left && m.rect.bottom > m.rect.top),
+        "Invalid or excessively large combined desktop dimensions."
+    );
+    let mut canvas = image::RgbImage::new(width as u32, height as u32);
+    for monitor in monitors {
+        let pixels = grab(monitor)?;
+        canvas.copy_from(
+            &pixels,
+            (i64::from(monitor.rect.left) - i64::from(left)) as u32,
+            (i64::from(monitor.rect.top) - i64::from(top)) as u32,
+        )?;
+    }
+    Ok(canvas)
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+    use image::{Rgb, RgbImage};
+
+    fn monitor(rect: (i32, i32, i32, i32), name: &str) -> Monitor {
+        Monitor {
+            rect: RECT {
+                left: rect.0,
+                top: rect.1,
+                right: rect.2,
+                bottom: rect.3,
+            },
+            name: name.into(),
+        }
+    }
+
+    #[test]
+    fn combined_layout_preserves_negative_origins_offsets_and_black_gaps() {
+        let monitors = [
+            monitor((-3, 0, 0, 2), "left"),
+            monitor((0, 0, 4, 3), "main"),
+            monitor((1, -2, 3, 0), "above"),
+        ];
+        let pixels = capture_combined(&monitors, |m| {
+            let color = match m.name.as_str() {
+                "left" => [255, 0, 0],
+                "main" => [0, 255, 0],
+                _ => [0, 0, 255],
+            };
+            Ok(RgbImage::from_pixel(
+                (m.rect.right - m.rect.left) as u32,
+                (m.rect.bottom - m.rect.top) as u32,
+                Rgb(color),
+            ))
+        })
+        .unwrap();
+        assert_eq!(pixels.dimensions(), (7, 5));
+        for (x, y, pixel) in pixels.enumerate_pixels() {
+            let expected = if (4..6).contains(&x) && y < 2 {
+                [0, 0, 255]
+            } else if x < 3 && (2..4).contains(&y) {
+                [255, 0, 0]
+            } else if x >= 3 && y >= 2 {
+                [0, 255, 0]
+            } else {
+                [0, 0, 0]
+            };
+            assert_eq!(pixel.0, expected, "pixel at {x},{y}");
+        }
+    }
+
+    #[test]
+    fn combined_single_monitor_is_unchanged() {
+        let source = RgbImage::from_fn(4, 3, |x, y| Rgb([x as u8, y as u8, 20]));
+        let pixels =
+            capture_combined(&[monitor((10, -5, 14, -2), "one")], |_| Ok(source.clone())).unwrap();
+        assert_eq!(pixels, source);
+    }
+
+    #[test]
+    fn combined_rejects_invalid_or_excessive_bounds_before_capture() {
+        for monitors in [
+            vec![],
+            vec![monitor((0, 0, 0, 3), "empty")],
+            vec![monitor((4, 0, 2, 3), "reversed")],
+            vec![monitor((0, 0, 10_000, 10_000), "large")],
+            vec![monitor(
+                (i32::MIN, i32::MIN, i32::MAX, i32::MAX),
+                "overflow",
+            )],
+        ] {
+            assert!(capture_combined(&monitors, |_| panic!("must not capture")).is_err());
+        }
+    }
+
+    #[test]
+    fn combined_capture_discards_canvas_when_a_monitor_fails() {
+        let monitors = [monitor((0, 0, 2, 2), "one"), monitor((2, 0, 4, 2), "two")];
+        let result = capture_combined(&monitors, |m| {
+            ensure!(m.name != "two", "Desktop became unavailable.");
+            Ok(RgbImage::new(2, 2))
+        });
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "Desktop became unavailable."
+        );
+    }
+    #[test]
+    #[ignore = "requires an unlocked interactive Windows desktop"]
+    fn native_combined_and_split_capture_dimensions_and_files() {
+        unsafe {
+            SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        }
+        assert!(
+            desktop_available(),
+            "Desktop must be unlocked and connected"
+        );
+        let mut monitors = Vec::<Monitor>::new();
+        unsafe {
+            EnumDisplayMonitors(
+                None,
+                None,
+                Some(enum_monitor),
+                LPARAM(&mut monitors as *mut _ as isize),
+            )
+            .ok()
+            .unwrap();
+        }
+        monitors.sort_by_key(|m| (m.rect.left, m.rect.top));
+        assert!(!monitors.is_empty());
+        let desktop_size = unsafe {
+            (
+                GetSystemMetrics(SM_CXVIRTUALSCREEN) as u32,
+                GetSystemMetrics(SM_CYVIRTUALSCREEN) as u32,
+            )
+        };
+        let folder = tempfile::tempdir().unwrap();
+        let available = AtomicBool::new(true);
+        let epoch = std::sync::atomic::AtomicU64::new(0);
+        let mut task = Task::default();
+        task.capture.include_cursor = true;
+        for format in ["png", "jpeg"] {
+            task.capture.image_format = format.into();
+            for split in [false, true] {
+                task.capture.split_by_monitor = split;
+                let files = capture(folder.path(), &task, &available, &epoch, 0).unwrap();
+                assert_eq!(files.len(), if split { monitors.len() } else { 1 });
+                for (index, file) in files.iter().enumerate() {
+                    let pixels = image::open(file).unwrap();
+                    let expected = if split {
+                        let rect = monitors[index].rect;
+                        (
+                            (rect.right - rect.left) as u32,
+                            (rect.bottom - rect.top) as u32,
+                        )
+                    } else {
+                        assert!(file.contains("all-monitors"));
+                        desktop_size
+                    };
+                    assert_eq!((pixels.width(), pixels.height()), expected);
+                }
+                println!(
+                    "{format}, split={split}: {} file(s), desktop {desktop_size:?}",
+                    files.len()
+                );
+            }
+        }
+    }
+}
+
 pub fn capture(
     base: &Path,
     task: &Task,
@@ -387,14 +576,24 @@ pub fn capture(
             "No supported monitors are available."
         );
         let at = Local::now();
-        for (index, monitor) in monitors.iter().enumerate() {
+        let grab = |monitor: &Monitor| -> Result<image::RgbImage> {
             ensure!(allowed(), "Desktop became unavailable.");
             let pixels = capture_monitor(monitor, task.capture.include_cursor)?;
             ensure!(
                 allowed(),
                 "Desktop became unavailable during capture; images discarded."
             );
-            let path = output::path_for(base, task, at, &monitor.name, index + 1)?;
+            Ok(pixels)
+        };
+        if task.capture.split_by_monitor {
+            for (index, monitor) in monitors.iter().enumerate() {
+                let pixels = grab(monitor)?;
+                let path = output::path_for(base, task, at, &monitor.name, index + 1)?;
+                files.push(output::save_image(&path, &pixels, task)?);
+            }
+        } else {
+            let pixels = capture_combined(&monitors, grab)?;
+            let path = output::path_for(base, task, at, "all-monitors", 1)?;
             files.push(output::save_image(&path, &pixels, task)?);
         }
         ensure!(

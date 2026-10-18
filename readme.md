@@ -15,7 +15,7 @@ No installer, administrator privileges, .NET, Node.js, Rust, or WebView is requi
 
 1. Put `ScheduledScreenshot.exe` in a writable folder, such as `C:\Users\you\Apps\ScheduledScreenshot`. If you have `ScheduledScreenshot-win-x64.zip`, extract it first. If you only have the source, follow [Build and verify](#build-and-verify) to create the executable.
 2. Double-click the executable. The task manager opens in your default browser and the app adds a tray icon.
-3. Select **Capture now** to take a first screenshot. Select **Open captures folder** to view it. By default, images are saved beside the executable under `captures/YYYY-MM-DD/`, one JPEG per monitor.
+3. Select **Capture now** to take a first screenshot. Select **Open captures folder** to view it. By default, images are saved beside the executable under `captures/YYYY-MM-DD/`, one JPEG containing all monitors in their desktop arrangement.
 4. To automate captures, select **New task**, name it, and set **Repeat at an interval** to **5 Minutes**. Choose **Every day**, review **Files & image**, check **Enable task**, and select **Save task**.
 5. Check the task's **Next capture** time. If scheduling is paused, select **Resume scheduling**. After a run, check **Last result** and the task's **Open folder** button.
 
@@ -58,16 +58,16 @@ Select **New task**, enter a name, and work through the editor tabs:
 | Tab | What to configure |
 | --- | --- |
 | **Schedule** | Run once at a date/time, repeat in seconds/minutes/hours, or capture at specific times on selected weekdays. Intervals can be limited to active hours within the same day. |
-| **Files & image** | Choose an output folder, filename template, JPEG or PNG, JPEG quality, and whether to include the cursor. Date subfolders are enabled by default. |
+| **Files & image** | Choose an output folder, filename template, JPEG or PNG, JPEG quality, whether to split images by screen, and whether to include the cursor. Date subfolders are enabled by default. |
 | **Stop conditions** | Optionally stop at a deadline, after an elapsed duration, or after a number of successful captures. |
 
-Review **Your capture plan**, check **Enable task** when ready, and select **Save task**. **New and duplicated tasks start disabled.** The preview shows the complete output path for monitor 1.
+Review **Your capture plan**, check **Enable task** when ready, and select **Save task**. **New and duplicated tasks start disabled.** The preview shows the complete output path for the combined image, or monitor 1 when splitting images by screen.
 
 Click a task name or **Edit** to change it. Tasks can also be duplicated, deleted, or enabled/disabled. The editor keeps Save visible, highlights invalid fields, and asks before discarding unsaved changes.
 
 ### Output folders and filenames
 
-Relative paths start beside the executable; absolute paths keep their specified destination. Each capture saves one image per monitor. It counts as successful only when every monitor image is saved. Existing files receive numbered suffixes and are never overwritten.
+Relative paths start beside the executable; absolute paths keep their specified destination. Each capture saves one image containing all monitors in their desktop arrangement by default. Enable **Split images by screen** to save a separate image for each monitor. Empty areas between monitors are black. A capture counts as successful only when all output images are saved. Existing files receive numbered suffixes and are never overwritten.
 
 Use **Open folder** on a task to open its output root, including any date subfolders. The folder is created if it does not exist yet.
 
@@ -78,23 +78,24 @@ The default filename template is `{timestamp}_{display}`. Supported tokens are:
 {taskId}  {taskId8}  {display}  {displayIndex}
 ```
 
-Tokens are case-insensitive. Insert them using the editor's token buttons; the image extension is added automatically.
+For combined images, `{display}` is `all-monitors` and `{displayIndex}` is `1`. When splitting, they identify each monitor. Tokens are case-insensitive. Insert them using the editor's token buttons; the image extension is added automatically.
 
 ## Capture now and keyboard shortcut
 
 Use **Capture now** in the manager or tray menu, or press **Ctrl+Shift+S** while the app is running. This works with no tasks, with the browser closed, and while scheduling is paused.
 
-Standalone captures use JPEG quality 85, no cursor, date subfolders, and `{timestamp}_{display}` filenames. They use their own destination and do not change scheduled task progress or use a task's image settings.
+Standalone captures combine all monitors in one image by default and use JPEG quality 85, no cursor, date subfolders, and `{timestamp}_{display}` filenames. They use their own destination and do not change scheduled task progress or use a task's image settings.
 
 Expand **Capture settings** to customize:
 
 | Setting | How to apply it |
 | --- | --- |
-| Screenshot destination | Enter **Save screenshots to** or use **Browse...**, then select **Save folder**. |
+| Screenshot destination | Enter **Save screenshots to** or use **Browse...**, then select **Save capture settings**. |
+| Split images by screen | Enable to save one image per monitor, then select **Save capture settings**. |
 | Global shortcut | Choose modifiers and a letter, digit, or F1–F11, then select **Save shortcut**. |
 | Disable the shortcut | Uncheck **Enable capture shortcut**, then select **Save shortcut**. |
 
-**Capture now** and **Open captures folder** also save a pending destination edit before using it. Keyboard and tray captures use the saved destination. Shortcut conflicts appear in the manager; choose another combination if needed. Holding the shortcut does not repeat captures.
+**Capture now** and **Open captures folder** also save pending destination and screen mode edits before using them. Keyboard and tray captures use the saved capture settings. Shortcut conflicts appear in the manager; choose another combination if needed. Holding the shortcut does not repeat captures.
 
 ## Keep it running
 

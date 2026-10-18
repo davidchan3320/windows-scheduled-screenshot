@@ -42,7 +42,9 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('#capture-settings summary').focus();
     await page.keyboard.press('Enter');
     await page.locator('#manual-folder').waitFor({state:'visible'});
-    // Standalone folder drafts survive status refresh; Browse cancellation preserves them.
+    assert.equal(await page.locator('#manual-split').isChecked(), false, 'Standalone captures combine screens by default');
+    await page.locator('#manual-split').check();
+    // Standalone capture drafts survive status refresh; Browse cancellation preserves them.
     await page.locator('#manual-folder').fill('manual captures/\u622a\u5716');
     assert(await page.locator('#capture-settings-draft').isVisible());
     await page.locator('#capture-settings summary').click();
@@ -50,10 +52,12 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.locator('#capture-settings summary').click();
     await page.waitForResponse('**/api/status');
     assert.equal(await page.locator('#manual-folder').inputValue(), 'manual captures/\u622a\u5716');
+    assert.equal(await page.locator('#manual-split').isChecked(), true);
     await page.route('**/api/folder', route => route.fulfill({json:{path:null}}));
     await page.locator('#manual-browse').click();
     await page.waitForFunction(() => !document.getElementById('manual-browse').disabled);
     assert.equal(await page.locator('#manual-folder').inputValue(), 'manual captures/\u622a\u5716');
+    assert.equal(await page.locator('#manual-split').isChecked(), true);
     await page.unroute('**/api/folder');
     // Capture saves the visible destination before submitting its standalone request.
     await page.locator('#capture-now').click();
@@ -61,6 +65,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.reload();
     await page.waitForFunction(() => document.getElementById('manual-folder').value === 'manual captures/\u622a\u5716');
     assert.match(await page.locator('#manual-output-path').textContent(), /manual captures/);
+    assert.equal(await page.locator('#manual-split').isChecked(), true, 'Capture now persists the screen preference');
     await page.route('**/api/folder', route => route.fulfill({json:{path:'manual captures/selected'}}));
     await page.locator('#manual-browse').click();
     await page.waitForFunction(() => document.getElementById('manual-folder').value.endsWith('/selected'));
@@ -76,11 +81,13 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     // Failed saves preserve the draft and never submit a capture to the old folder.
     captureBody = undefined;
     await page.locator('#manual-folder').fill('unsaved folder');
+    await page.locator('#manual-split').uncheck();
     await page.route('**/api/save', route => route.fulfill({status:409,json:{error:'CONFLICT: Settings changed in another window. Reload before saving.'}}));
     await page.locator('#capture-now').click();
     await page.waitForFunction(() => !document.getElementById('capture-now').disabled);
     assert.equal(captureBody, undefined);
     assert.equal(await page.locator('#manual-folder').inputValue(), 'unsaved folder');
+    assert.equal(await page.locator('#manual-split').isChecked(), false, 'Failed saves retain the screen preference draft');
     await page.unroute('**/api/save');
     await page.locator('#manual-folder').fill('captures');
     await page.locator('#manual-folder-save').click();
@@ -88,6 +95,8 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.unroute('**/api/status');
     await page.unroute('**/api/capture');
     await page.reload();
+    await page.waitForFunction(() => document.getElementById('manual-folder').value === 'captures');
+    assert.equal(await page.locator('#manual-split').isChecked(), false, 'Explicit save persists combined capture mode');
     // A configurable global shortcut is saved independently of tasks.
     await page.locator('#shortcut-key').selectOption('F9');
     await page.locator('#shortcut-modifiers').selectOption('ctrl+alt+shift');
@@ -136,7 +145,14 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.locator('#tab-files').getAttribute('aria-selected'),'true');
     await page.locator('#folder').fill('captures/review');
     await page.locator('#template').fill('{date}_{task}_{display}');
+    assert.equal(await page.locator('#split').isChecked(), false, 'Tasks combine all screens by default');
+    await page.waitForFunction(() => document.getElementById('preview').textContent.includes('Workday reference_all-monitors.jpg'));
+    assert.match(await page.locator('#summary-image').textContent(), /all screens in one image/);
+    assert.equal(await page.locator('#preview-label').textContent(), 'Example file \u00b7 all monitors');
+    await page.locator('#split').check();
     await page.waitForFunction(() => document.getElementById('preview').textContent.includes('Workday reference_DISPLAY1.jpg'));
+    assert.match(await page.locator('#summary-image').textContent(), /one image per screen/);
+    assert.equal(await page.locator('#preview-label').textContent(), 'Example file \u00b7 monitor 1');
     // Native dialog contract test here; smoke.py also cancels an actual Windows dialog.
     await page.route('**/api/folder', route => route.fulfill({json:{path:null}}));
     await page.locator('#browse').click();
@@ -154,6 +170,7 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.locator('#tasks').getByRole('button',{name:'Capture now',exact:true}).count(),0);
     assert.match(await page.locator('#tasks tr').first().textContent(), /Every 15 minutes/);
     await page.locator('#tasks tr').first().getByRole('button',{name:'Edit',exact:true}).click();
+    assert.equal(await page.locator('#split').isChecked(), true, 'Task screen preference survives saving');
     assert.equal(await page.locator('#interval').inputValue(),'15');
     assert.equal(await page.locator('#interval-unit').inputValue(),'60');
     // Required fields in another tab reveal the right section before saving.

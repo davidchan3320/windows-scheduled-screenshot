@@ -32,6 +32,46 @@ fn defaults_are_portable_and_disabled() {
     assert_eq!(t.capture.output_folder, "captures");
     assert!(t.capture.date_subfolders);
     assert_eq!(t.capture.jpeg_quality, 85);
+    assert!(!t.capture.split_by_monitor);
+}
+
+#[test]
+fn combined_capture_defaults_and_split_preferences_survive_save_and_import() {
+    let mut settings: Settings = serde_json::from_value(serde_json::json!({
+        "schemaVersion": 2,
+        "tasks": [{"capture": {"outputFolder": "task captures"}}]
+    }))
+    .unwrap();
+    assert!(!settings.manual_split_by_monitor);
+    assert!(!settings.manual_capture_task().capture.split_by_monitor);
+    assert!(!settings.tasks[0].capture.split_by_monitor);
+    settings.manual_split_by_monitor = true;
+    assert!(settings.manual_capture_task().capture.split_by_monitor);
+    assert!(!settings.tasks[0].capture.split_by_monitor);
+    settings.tasks[0].capture.split_by_monitor = true;
+    let directory = tempfile::tempdir().unwrap();
+    let store = Store::new(directory.path().into()).unwrap();
+    store.save_settings(&settings).unwrap();
+    let loaded = store.load().unwrap().settings;
+    assert_eq!(loaded, settings);
+    let exported = serde_json::to_value(&loaded).unwrap();
+    assert_eq!(exported["manualSplitByMonitor"], true);
+    assert_eq!(exported["tasks"][0]["capture"]["splitByMonitor"], true);
+    let imported: Settings = serde_json::from_value(exported).unwrap();
+    imported.validate().unwrap();
+    assert_eq!(imported, settings);
+    assert!(
+        serde_json::from_value::<Settings>(serde_json::json!({
+            "manualSplitByMonitor": "yes"
+        }))
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<Task>(serde_json::json!({
+            "capture": {"splitByMonitor": "yes"}
+        }))
+        .is_err()
+    );
 }
 #[test]
 fn language_defaults_persist_and_reject_unknown_packs() {

@@ -126,7 +126,10 @@ function render(value) {
   $('startup').checked = settings.startAtSignIn;
   $('capture-now').disabled = manualRequestPending || value.busy || !value.captureAllowed;
   $('capture-now').textContent = value.manualCaptureRunning ? t('Capturing...') : t('Capture now');
-  if (!manualFolderDirty) $('manual-folder').value = settings.manualOutputFolder;
+  if (!manualFolderDirty) {
+    $('manual-folder').value = settings.manualOutputFolder;
+    $('manual-split').checked = settings.manualSplitByMonitor === true;
+  }
   updateManualFolderState();
   $('manual-output-path').textContent = value.manualOutputFolder;
   if (!shortcutDirty) {
@@ -249,7 +252,8 @@ function fields() {
   Object.assign(task.capture, {
     outputFolder: $('folder').value.trim(), dateSubfolders: $('dated').checked,
     fileNameTemplate: $('template').value, imageFormat: $('format').value,
-    jpegQuality: Number($('quality').value), includeCursor: $('cursor').checked
+    jpegQuality: Number($('quality').value), includeCursor: $('cursor').checked,
+    splitByMonitor: $('split').checked
   });
   Object.assign(task.schedule, {
     type: $('kind').value, atLocal: normalizeDate($('at').value) || null,
@@ -370,6 +374,7 @@ function openEditor(task, isNew = false) {
   $('active').checked = schedule.activeHoursEnabled;
   $('dated').checked = capture.dateSubfolders;
   $('cursor').checked = capture.includeCursor;
+  $('split').checked = capture.splitByMonitor === true;
   document.querySelectorAll('.days input').forEach(input => { input.checked = schedule.weekdays.includes(input.value); });
   visibility();
   initialDraft = JSON.stringify(fields());
@@ -391,7 +396,9 @@ function updateSummary() {
   $('summary-stop').textContent = stopLabel(task);
   $('summary-image').textContent = task.capture.imageFormat.toUpperCase()
     + (task.capture.imageFormat === 'jpeg' ? t(' / quality {quality}', {quality: task.capture.jpegQuality}) : '')
-    + (task.capture.includeCursor ? t(' / with cursor') : '');
+    + (task.capture.includeCursor ? t(' / with cursor') : '')
+    + t(task.capture.splitByMonitor ? ' / one image per screen' : ' / all screens in one image');
+  $('preview-label').textContent = t(task.capture.splitByMonitor ? 'Example file · monitor 1' : 'Example file · all monitors');
   $('save-hint').textContent = task.enabled ? t('Runs on schedule after saving.') : t('Saved as disabled. Enable when ready.');
 }
 let previewSerial = 0;
@@ -518,8 +525,8 @@ function updateManualFolderState() {
   updateCaptureSettingsDraft();
   $('manual-folder-save').disabled = !manualFolderDirty || !!manualFolderSaving;
   $('manual-folder-state').textContent = manualFolderDirty
-    ? t('Unsaved folder. Capture now and Open captures folder save it first.')
-    : t('Folder saved for browser and tray captures.');
+    ? t('Unsaved capture settings. Capture now and Open captures folder save them first.')
+    : t('Capture settings saved for browser, shortcut, and tray captures.');
   $('manual-output-path').hidden = manualFolderDirty;
 }
 function manualFolderChanged() {
@@ -534,7 +541,8 @@ async function saveManualFolder() {
   if (!$('manual-folder').reportValidity()) throw new Error(t('Enter a valid output folder.'));
   const settings = structuredClone(snapshot.settings);
   settings.manualOutputFolder = $('manual-folder').value;
-  $('manual-folder').disabled = $('manual-browse').disabled = $('manual-folder-save').disabled = true;
+  settings.manualSplitByMonitor = $('manual-split').checked;
+  $('manual-folder').disabled = $('manual-split').disabled = $('manual-browse').disabled = $('manual-folder-save').disabled = true;
   manualFolderSaving = (async () => {
     try {
       const value = await api('save', {settings, revision: manualFolderRevision});
@@ -542,13 +550,14 @@ async function saveManualFolder() {
       render(value);
     } finally {
       manualFolderSaving = undefined;
-      $('manual-folder').disabled = $('manual-browse').disabled = false;
+      $('manual-folder').disabled = $('manual-split').disabled = $('manual-browse').disabled = false;
       updateManualFolderState();
     }
   })();
   return manualFolderSaving;
 }
 $('manual-folder').oninput = manualFolderChanged;
+$('manual-split').oninput = manualFolderChanged;
 $('manual-folder-form').onsubmit = event => { event.preventDefault(); action(saveManualFolder); };
 $('manual-browse').onclick = () => action(async () => {
   $('manual-browse').disabled = true;

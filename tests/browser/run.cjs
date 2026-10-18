@@ -13,6 +13,6 @@ host.stdout.on('data', data => {
   if (started || !data.includes('#token=')) return;
   started = true; clearTimeout(timer);
   const test = spawn(process.execPath, [path.join(__dirname, 'suite.cjs')], {stdio:'inherit', windowsHide:true, env:{...process.env, SCHEDULER_URL:data.trim(), SMOKE_OUTPUT:output}});
-  test.on('exit', code => { host.stdin.end('\n'); process.exitCode = code || 0; });
+  test.on('exit', code => { if (code !== 0) process.exitCode = 1; host.stdin.end('\n'); });
 });
-host.on('exit', code => { clearTimeout(timer); if (!started || code) process.exitCode = 1; });
+host.on('exit', code => { clearTimeout(timer); if (!started || code !== 0) process.exitCode = 1; });

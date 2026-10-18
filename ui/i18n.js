@@ -36,8 +36,8 @@ const I18n = (() => {
     if (!value || locale === 'en') return value || '';
     if (Object.hasOwn(packs[locale], value)) return t(value);
     if (Object.values(packs[locale]).includes(value)) return value;
-    let match = value.match(/^Saved (\d+) monitor image\(s\)\.$/);
-    if (match) return t('Saved {count} monitor image(s).', {count: match[1]});
+    let match = value.match(/^Saved (\d+) (?:monitor )?image\(s\)\.$/);
+    if (match) return t('Saved {count} image(s).', {count: match[1]});
     if (value.startsWith('Failed: ')) return t('Failed: {detail}', {detail: message(value.slice(8))});
     match = value.match(/^Unknown filename token: (.+)\.$/);
     if (match) return t('Unknown filename token: {token}.', {token: match[1]});

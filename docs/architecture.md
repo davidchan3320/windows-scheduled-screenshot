@@ -69,11 +69,11 @@ Solid arrows show requests, dispatch, and file output. The dashed arrow returns 
 | Behavior | Scheduled capture | Standalone capture |
 | --- | --- | --- |
 | Trigger | Enabled task reaches its next occurrence | Browser, tray, or saved global shortcut |
-| Destination and image settings | Saved task configuration | Saved manual folder; JPEG quality 85, no cursor, date subfolders |
+| Destination and image settings | Saved task configuration | Saved manual folder and split preference; JPEG quality 85, no cursor, date subfolders |
 | While scheduling is paused | Does not capture | Available if the desktop is capturable and the worker is idle |
 | Task progress | Successful batches count toward task limits | Does not change task progress |
 
-Manual captures use the same bounded, sequential capture worker as schedules, with a transient default capture configuration and the persisted `manualOutputFolder` preference (default `captures`). The folder is copied into the request when accepted, so subsequent preference edits do not redirect an in-flight capture.
+Manual captures use the same bounded, sequential capture worker as schedules, with a transient default capture configuration and the persisted `manualOutputFolder` (default `captures`) and `manualSplitByMonitor` (default `false`) preferences. These settings are copied into the request when accepted, so subsequent preference edits do not alter an in-flight capture.
 
 Browser and tray capture/open actions share this preference and call the same standalone operation. Relative paths resolve from the executable directory; absolute paths are retained.
 
@@ -86,6 +86,8 @@ Manual captures do not look up a saved task and never add an entry to runtime ta
 ### Desktop availability
 
 Desktop availability requires both an active Windows session and the input desktop named `Default`. Capture checks availability before and after each monitor, and after saving the batch. A batch counts only after every image is saved; failed batches remove their own partial output.
+
+Captures combine monitors into one RGB image by default, preserving physical desktop coordinates and filling gaps with black. The combined canvas is limited to 80 million pixels; one monitor buffer is held alongside it during composition. Task `capture.splitByMonitor` or standalone `manualSplitByMonitor` enables separate images with the existing per-monitor size limit. Missing fields default to combined output. Combined filenames use `all-monitors` and index `1`; split filenames use each display name and index.
 
 ### Global shortcut
 

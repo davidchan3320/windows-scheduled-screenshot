@@ -116,6 +116,20 @@ pub fn resolve_folder(base: &Path, folder: &str) -> Result<PathBuf> {
     })
 }
 
+pub fn preview_path(base: &Path, task: &Task) -> Result<PathBuf> {
+    path_for(
+        base,
+        task,
+        Local::now(),
+        if task.capture.split_by_monitor {
+            "DISPLAY1"
+        } else {
+            "all-monitors"
+        },
+        1,
+    )
+}
+
 pub fn path_for(
     base: &Path,
     t: &Task,

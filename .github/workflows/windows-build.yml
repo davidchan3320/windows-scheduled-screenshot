@@ -25,6 +25,7 @@ jobs:
       - name: Install UI build tools and verify bundled CSS
         run: |
           npm ci
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run check:css
       - name: Format
         run: cargo fmt --all -- --check
@@ -35,11 +36,15 @@ jobs:
       - name: Check JavaScript
         run: |
           node --check ui/app.js
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --check ui/i18n.js
+      - name: Test browser runner failure handling
+        run: node --test tests/browser/run.test.cjs
       - name: Browser tests without desktop capture
         shell: pwsh
         run: |
           npx playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cargo build --locked --example ui-test-host
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:browser

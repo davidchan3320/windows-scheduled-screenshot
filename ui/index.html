@@ -19,22 +19,24 @@
   <div id="notice" role="alert" hidden></div>
   <section class="quick-capture" aria-labelledby="quick-title">
     <div class="capture-bar">
-    <div><h2 id="quick-title">Take a screenshot</h2><p>Capture once without a task. JPEG images are saved in date subfolders.</p></div>
+    <div><h2 id="quick-title">Take a screenshot</h2><p>Capture all screens in one image by default. JPEG images are saved in date subfolders.</p></div>
     <div class="capture-actions"><button id="capture-now" class="primary">Capture now</button><kbd id="capture-shortcut" hidden></kbd><button id="open-captures">Open captures folder</button></div>
     </div>
     <details id="capture-settings" class="capture-settings">
-      <summary><span>Capture settings</span><span class="text-xs font-normal text-muted">Folder &amp; keyboard shortcut</span><span id="capture-settings-draft" class="settings-badge" hidden>Unsaved changes</span><span id="capture-settings-warning" class="settings-badge" hidden>Shortcut needs attention</span></summary>
+      <summary><span>Capture settings</span><span class="text-xs font-normal text-muted">Folder, screens &amp; keyboard shortcut</span><span id="capture-settings-draft" class="settings-badge" hidden>Unsaved changes</span><span id="capture-settings-warning" class="settings-badge" hidden>Shortcut needs attention</span></summary>
       <div class="capture-settings-grid">
     <form id="manual-folder-form" class="manual-folder-form">
       <label for="manual-folder">Save screenshots to</label>
-      <div class="path-row"><input id="manual-folder" required maxlength="2000" autocomplete="off" aria-describedby="manual-folder-help manual-folder-state"><button type="button" id="manual-browse">Browse...</button><button id="manual-folder-save" type="submit" disabled>Save folder</button></div>
+      <div class="path-row"><input id="manual-folder" required maxlength="2000" autocomplete="off" aria-describedby="manual-folder-help manual-folder-state"><button type="button" id="manual-browse">Browse...</button><button id="manual-folder-save" type="submit" disabled>Save capture settings</button></div>
       <p id="manual-folder-help" class="hint">Use a full path, or a relative path starting beside the executable.</p>
+      <label class="check"><input id="manual-split" type="checkbox"> Split images by screen</label>
+      <p class="hint check-hint">Off by default: save all screens in one image using their desktop arrangement.</p>
       <p id="manual-folder-state" class="hint" role="status"></p>
       <span id="manual-output-path" class="task-path"></span>
     </form>
     <form id="shortcut-form" class="shortcut-form">
       <label class="check"><input id="shortcut-enabled" type="checkbox"> Enable capture shortcut</label>
-      <p class="hint">Works in any app while Scheduled Screenshot is running. Uses your saved screenshot folder.</p>
+      <p class="hint">Works in any app while Scheduled Screenshot is running. Uses your saved capture settings.</p>
       <div class="shortcut-controls"><label for="shortcut-modifiers">Modifier keys<select id="shortcut-modifiers"><option value="ctrl+shift">Ctrl + Shift</option><option value="ctrl+alt">Ctrl + Alt</option><option value="alt+shift">Alt + Shift</option><option value="ctrl+alt+shift">Ctrl + Alt + Shift</option></select></label><label for="shortcut-key">Key<select id="shortcut-key"></select></label><button id="shortcut-save" type="submit" disabled>Save shortcut</button></div>
       <p id="shortcut-status" class="hint" role="status"></p>
     </form>
@@ -86,15 +88,17 @@
         </section>
 
         <section id="panel-files" role="tabpanel" aria-labelledby="tab-files" tabindex="0" hidden>
-          <h3>Where should the images go?</h3><p class="section-intro">Each capture saves one image per connected monitor.</p>
+          <h3>Where should the images go?</h3><p class="section-intro">Each capture saves all screens in one image by default.</p>
           <label for="folder">Output folder</label><div class="path-row"><input id="folder" required autocomplete="off" aria-describedby="folder-help"><button type="button" id="browse">Browse...</button></div>
           <p class="hint" id="folder-help">Use a full path, or a relative path starting beside the executable.</p>
           <label class="check"><input id="dated" type="checkbox"> Create a subfolder for each date</label><p class="hint check-hint">Example: captures / 2026-10-18 / image.jpg</p>
           <div class="field-divider"></div>
           <label for="template">Filename template</label><input id="template" required autocomplete="off" aria-describedby="template-help">
-          <p class="hint" id="template-help">Click a token to insert it at the cursor. The extension is added for you.</p>
+          <p class="hint" id="template-help">Click a token to insert it at the cursor. The extension is added for you. In combined images, {display} is all-monitors and {displayIndex} is 1.</p>
           <div id="tokens" class="tokens" aria-label="Filename tokens"></div>
           <div class="pair"><label>Image format<select id="format"><option value="jpeg">JPEG &middot; smaller files</option><option value="png">PNG &middot; lossless</option></select></label><label id="quality-label">JPEG quality (1&ndash;100)<input id="quality" type="number" min="1" max="100" required></label></div>
+          <label class="check"><input id="split" type="checkbox"> Split images by screen</label>
+          <p class="hint check-hint">Off by default: save all screens in one image using their desktop arrangement.</p>
           <label class="check"><input id="cursor" type="checkbox"> Include the mouse cursor</label>
         </section>
 
@@ -104,14 +108,14 @@
           <label id="deadline-label">Stop at (local time)<input id="deadline" type="datetime-local" step="1" required></label>
           <div id="duration-label"><label for="duration">Duration from enabling</label><div class="unit-row"><input id="duration" type="number" min="1" max="31536000" required><select id="duration-unit" aria-label="Duration unit"><option value="1">Seconds</option><option value="60">Minutes</option><option value="3600">Hours</option><option value="86400">Days</option></select></div></div>
           <label id="captures-label">Number of successful captures<input id="captures" type="number" min="1" max="1000000" required></label>
-          <p class="info-note">A scheduled capture counts only when every monitor image is saved. &ldquo;Capture now&rdquo; does not use a scheduled run.</p>
+          <p class="info-note">A scheduled capture counts only when all output images are saved. &ldquo;Capture now&rdquo; does not use a scheduled run.</p>
         </section>
       </div>
       <aside class="task-summary" aria-label="Task summary">
         <div class="summary-heading"><span class="camera" aria-hidden="true"></span><h3>Your capture plan</h3></div>
         <span id="summary-state" class="state-tag">Disabled</span>
         <dl><dt>When</dt><dd id="summary-schedule"></dd><dt>Repeat on</dt><dd id="summary-days"></dd><dt>Stop</dt><dd id="summary-stop"></dd><dt>Image</dt><dd id="summary-image"></dd></dl>
-        <div class="preview"><span>Example file &middot; monitor 1</span><output id="preview">Enter task details to preview</output><small>Existing files receive a numbered suffix.</small></div>
+        <div class="preview"><span id="preview-label">Example file &middot; all monitors</span><output id="preview">Enter task details to preview</output><small>Existing files receive a numbered suffix.</small></div>
       </aside>
     </div>
     <div class="dialog-actions editor-actions"><span id="save-hint">Saved as disabled. Enable when ready.</span><button type="button" id="cancel">Cancel</button><button type="submit" id="save" class="primary">Save task</button></div>
